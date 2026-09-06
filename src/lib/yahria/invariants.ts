@@ -85,6 +85,8 @@ export const INVARIANTS: Invariant[] = [
   { id: 'INV-201', family: 'OVERSIGHT', title: 'Explicit Override', rule: 'Human overrides attributable and auditable.' },
   { id: 'INV-210', family: 'FAILURE', title: 'Fail Safely', rule: 'DO NOT GUESS. DO NOT ESCALATE PRIVILEGE. DO NOT ASSUME SUCCESS.' },
   { id: 'INV-211', family: 'FAILURE', title: 'Failure Preserves Evidence', rule: 'Failure MUST NOT automatically erase evidence.' },
+  { id: 'INV-212', family: 'OVERSIGHT', title: 'Single LLM Route', rule: 'Every LLM call routes through the fabric: declared providers, ordered fallback, visible attempts trace — no ad-hoc provider imports.' },
+  { id: 'INV-213', family: 'SECURITY', title: 'Credentials Never Exposed', rule: 'Provider API keys stay server-side; telemetry exposes masked keys only.' },
 ];
 
 export const INVARIANT_FAMILIES = Array.from(new Set(INVARIANTS.map((i) => i.family)));

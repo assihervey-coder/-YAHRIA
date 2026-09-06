@@ -304,16 +304,21 @@ async function callLLMWithBackoff(system: string, user: string): Promise<string>
 }
 
 async function callLLM(system: string, user: string): Promise<string> {
-  const { default: ZAI } = await import('z-ai-web-dev-sdk');
-  const zai = await ZAI.create();
-  const completion = await zai.chat.completions.create({
+  // INV-212: single LLM route — multi-provider fabric with ordered fallback.
+  // The fabric reports which provider actually served the call in its attempts trace.
+  const { runLLMChat } = await import('./llm-fabric');
+  const r = await runLLMChat({
     messages: [
-      { role: 'assistant', content: system },
+      { role: 'system', content: system },
       { role: 'user', content: user },
     ],
-    thinking: { type: 'enabled' },
+    thinking: true,
   });
-  return completion.choices[0]?.message?.content ?? '';
+  if (!r.ok) {
+    const trace = r.attempts.map((a) => `${a.provider}:${a.error ?? 'FAIL'}`).join(' | ');
+    throw new Error(`LLM fabric exhausted — ${trace}`);
+  }
+  return r.text;
 }
 
 /** Extrait le premier objet/tableau JSON d'une réponse LLM (tolère les fences). */

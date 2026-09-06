@@ -103,6 +103,7 @@ Règles structurelles clés :
 | `fuzz-constitution.ts` | **R8** — fuzzing de propriétés constitutionnelles (PRNG semé xorshift32, 6 propriétés) |
 | `self-heal.ts` | **R8** — auto-réparation bornée, réparations déterministes, re-scellement par certificat |
 | `attestation.ts` | **R8** — attestation workspace signée (type SLSA/in-toto), vérification + diff anti-régression |
+| `llm-fabric.ts` | **R10** — **fabric LLM multi-fournisseurs** (YAHRIA-KRN-023) : route unique INV-212, repli ordonné, circuit breaker, télémétrie masquée INV-213 |
 
 ## API `/api/yahria/*`
 
@@ -121,11 +122,12 @@ Règles structurelles clés :
 | `POST studio/runs/[id]/edit` | **Éditeur IA** — régénère un fichier sur instruction, re-scelle le ZIP |
 | `GET studio/runs/[id]/download` | Télécharge la livraison ZIP (état SEALED requis) |
 | `GET / POST supremacy` | **R8** — catalogue + 12 capacités de souveraineté : preuves embarquées, Merkle, blast radius, débat, time-travel, fuzzing, self-heal, attestations |
+| `GET / POST llm` | **R10** — fabric LLM : statut fournisseurs (GET), sonde de connectivité + réordonnancement runtime (POST) |
 | `WS /ws/yahria` | **Flux temps réel** (WebSocket, domaine 11) — handshake `hello → snapshot → events` |
 
 ## YAHRIA Mission Control (UI)
 
-11 panneaux : **Studio autonome · Souveraineté R8 · Centre de commande · Raisonnement hybride ·
+12 panneaux : **Studio autonome · Souveraineté R8 · Connecteurs IA · Centre de commande · Raisonnement hybride ·
 Agent OS · Graphe de tâches · Exécutions · Preuves · Politiques · Blueprint ·
 Temps réel**. Le Studio autonome couvre le cycle complet : soumission
 d'arborescence (ou brief seul, l'architecte S2 concevant alors les fichiers),
@@ -134,7 +136,12 @@ journal WebSocket, navigateur de fichiers générés, éditeur IA par instructio
 et téléchargement du ZIP scellé. Le panneau **Souveraineté R8** auto-démontre
 en un clic les huit capacités de calibre expert (preuves embarquées, Merkle,
 blast radius, débat adversarial, time-travel, fuzzing, self-heal, attestation)
-avec scénarios réels et preuves affichées. Le panneau temps réel diffuse
+avec scénarios réels et preuves affichées. Le panneau **Connecteurs IA**
+montre le registre des fournisseurs LLM (configurés, breaker, latence),
+permet de sonder chaque connecteur en un clic et de réordonner la chaîne
+de repli — brancher DeepSeek, Claude, OpenAI ou Ollama revient à remplir
+`.env.example` (voir `public/docs/LLM_CONNECTORS_SPECIFICATION.md`).
+Le panneau temps réel diffuse
 les événements constitutionnels via WebSocket avec reconnexion automatique.
 
 ## Démarrage rapide

@@ -200,12 +200,14 @@ function heuristicPlan(goal: string): PlanStep[] {
 export async function system2(goal: string, worldState: WorldState): Promise<S2Result> {
   const t0 = Date.now();
   try {
-    const { default: ZAI } = await import('z-ai-web-dev-sdk');
-    const zai = await ZAI.create();
-    const completion = await zai.chat.completions.create({
+    // INV-212: every LLM call routes through the multi-provider fabric
+    // (zai → deepseek → claude → openai → openrouter → ollama → custom, ordered fallback).
+    const { runLLMChat } = await import('./llm-fabric');
+    const llm = await runLLMChat({
+      thinking: true,
       messages: [
         {
-          role: 'assistant',
+          role: 'system',
           content: `You are YAHRIA's System-2 deliberative reasoner inside an autonomous software intelligence OS.
 Rules you MUST obey:
 - You are governed: policy DENY overrides any plan step (INV-120).
@@ -214,6 +216,7 @@ Rules you MUST obey:
 - Sandbox writes only; host is read-only (FS-001).
 - All file writes land in workspace overlay.
 Available agents: explorer, architect, planner, coder, debugger, tester, reviewer, security, verifier.
+Respond in the SAME LANGUAGE as the GOAL below.
 Respond with STRICT JSON only: {"analysis": string, "steps": [{"action": string, "detail": string, "owner": one of the agents, "requiresApproval": boolean}], "residual_uncertainty": number between 0 and 1, "answer": string}`,
         },
         {
@@ -222,9 +225,20 @@ Respond with STRICT JSON only: {"analysis": string, "steps": [{"action": string,
 WORLD_STATE: ${JSON.stringify(worldState)}`,
         },
       ],
-      thinking: { type: 'enabled' },
     });
-    const raw = completion.choices[0]?.message?.content ?? '';
+    if (!llm.ok) {
+      const trace = llm.attempts.map((a) => `${a.provider}:${a.ok ? 'OK' : `FAIL(${a.error ?? '?'})`}`).join(' → ');
+      return {
+        answer: '[S2:FALLBACK] Aucun fournisseur LLM disponible → plan heuristique structuré (explicitement non vérifié).',
+        plan: heuristicPlan(goal),
+        reasoning: `LLM fabric exhausted (${trace}); heuristic decomposition used and flagged UNVERIFIED (INV-081).`,
+        uncertainty: 0.6,
+        ms: Date.now() - t0,
+        modelUsed: 'HEURISTIC_FALLBACK',
+      };
+    }
+    const raw = llm.text;
+    const fabricNote = `via ${llm.provider}:${llm.model}`;
     let parsed: { analysis?: string; steps?: { action: string; detail: string; owner: string; requiresApproval?: boolean }[]; residual_uncertainty?: number; answer?: string } | null = null;
     try {
       const jsonStr = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
@@ -250,14 +264,14 @@ WORLD_STATE: ${JSON.stringify(worldState)}`,
         reasoning: parsed.analysis ?? raw.slice(0, 600),
         uncertainty: typeof parsed.residual_uncertainty === 'number' ? Math.max(0, Math.min(1, parsed.residual_uncertainty)) : 0.25,
         ms: Date.now() - t0,
-        modelUsed: 'YAHRIA-S2-LLM',
+        modelUsed: `YAHRIA-S2-LLM ${fabricNote}`,
       };
     }
     // LLM responded but unparsable → explicit heuristic fallback
     return {
       answer: '[S2:FALLBACK] LLM response unparsable → structured heuristic plan (explicitly non-verified).',
       plan: heuristicPlan(goal),
-      reasoning: raw.slice(0, 400),
+      reasoning: `${raw.slice(0, 400)} [fabric: ${fabricNote}]`,
       uncertainty: 0.55,
       ms: Date.now() - t0,
       modelUsed: 'HEURISTIC_FALLBACK',
