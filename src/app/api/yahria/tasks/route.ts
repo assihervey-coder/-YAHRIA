@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { ensureBootstrapped } from '@/lib/yahria/bootstrap';
 import { TASK_MACHINE, assertTransition } from '@/lib/yahria/state-machines';
 import { captureEvidence } from '@/lib/yahria/evidence-engine';
+import { emitYahriaEvent, REALTIME_EVENT_TYPES } from '@/lib/yahria/realtime';
 
 export async function GET() {
   try {
@@ -29,6 +30,11 @@ export async function POST(req: Request) {
         state: dependsOn.length === 0 ? 'READY' : 'PENDING',
       },
     });
+    emitYahriaEvent({
+      type: REALTIME_EVENT_TYPES.TASK_CREATED, source: '07', severity: 'INFO',
+      message: `Tâche créée — « ${title} » (${task.state})`,
+      payload: { taskId: task.id, title, state: task.state, kind: task.kind, priority: task.priority },
+    });
     return NextResponse.json({ ok: true, task });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
@@ -49,6 +55,11 @@ export async function PATCH(req: Request) {
     try {
       rule = assertTransition(TASK_MACHINE, task.state, to);
     } catch (err) {
+      emitYahriaEvent({
+        type: REALTIME_EVENT_TYPES.TASK_TRANSITION_REJECTED, source: '07', severity: 'WARN',
+        message: `Transition refusée ${task.state} → ${to} — machine ${TASK_MACHINE.name} (transitions silencieuses interdites)`,
+        payload: { taskId: id, title: task.title, from: task.state, to },
+      });
       return NextResponse.json({ ok: false, error: String(err), machine: TASK_MACHINE.name }, { status: 422 });
     }
 
@@ -80,6 +91,13 @@ export async function PATCH(req: Request) {
       actorId: 'mission-control', claim: `Task ${task.title}: ${task.state} → ${to} (guard: ${rule.guard})`,
       payload: { taskId: id, from: task.state, to, authority: rule.authority },
       taskId: id,
+    });
+
+    emitYahriaEvent({
+      type: REALTIME_EVENT_TYPES.TASK_TRANSITION, source: '07',
+      severity: to === 'COMPLETED' ? 'SUCCESS' : to === 'FAILED' ? 'WARN' : 'INFO',
+      message: `Tâche « ${task.title} » : ${task.state} → ${to} (garde: ${rule.guard}, autorité: ${rule.authority})`,
+      payload: { taskId: id, from: task.state, to, guard: rule.guard, authority: rule.authority, evidenceUid: ev.evidenceUid },
     });
 
     return NextResponse.json({ ok: true, task: updated, transition: rule, evidenceUid: ev.evidenceUid });

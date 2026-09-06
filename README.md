@@ -88,12 +88,15 @@ Règles structurelles clés :
 | `POST evidence` | Cycle de preuve : `capture → verify → seal` (SHA-256 chaîné) |
 | `POST policy` | Évaluer une décision contre le contrôle de politique |
 | `GET / POST tasks` | Graphe de tâches + transitions gardées par machine à états |
+| `WS /ws/yahria` | **Flux temps réel** (WebSocket, domaine 11) — handshake `hello → snapshot → events` |
 
 ## YAHRIA Mission Control (UI)
 
-8 panneaux : **Centre de commande · Raisonnement hybride · Agent OS · Graphe de
-tâches · Exécutions · Preuves · Politiques · Blueprint** (le blueprint affiche la
-constitution : invariants, domaines, graphe de dépendances, livrables restaurés).
+9 panneaux : **Centre de commande · Raisonnement hybride · Agent OS · Graphe de
+tâches · Exécutions · Preuves · Politiques · Blueprint · Temps réel** (le blueprint
+affiche la constitution : invariants, domaines, graphe de dépendances, livrables
+restaurés ; le panneau temps réel diffuse les événements constitutionnels via
+WebSocket avec reconnexion automatique).
 
 ## Démarrage rapide
 
@@ -102,8 +105,12 @@ constitution : invariants, domaines, graphe de dépendances, livrables restauré
 bun install            # ou npm install
 bun run db:push        # crée le schéma Prisma (15 modèles)
 bun run db:generate    # client Prisma
-bun run dev            # http://localhost:3000
+bun run dev            # http://localhost:3000 — serveur personnalisé (Next + WS)
 ```
+
+Le serveur personnalisé `server.mjs` héberge Next.js **et** le WebSocket
+temps réel dans le même processus Node (bus d'événements partagé via
+`globalThis`). Test de bout en bout : `node scripts/ws-test.mjs`.
 
 Le seed constitutionnel est **idempotent** : au premier appel système, le
 bootstrap installe agents, domaines, politiques et invariants.
@@ -134,14 +141,17 @@ du contrat 00 en fichiers racine autonomes.
 ├── src/
 │   ├── app/                    # Next.js App Router (UI + API)
 │   │   ├── api/yahria/         # 7 endpoints constitutionnels
-│   │   └── page.tsx            # Mission Control (8 panneaux)
+│   │   └── page.tsx            # Mission Control (9 panneaux)
 │   ├── components/yahria/      # Panneaux Mission Control
-│   └── lib/yahria/             # ⭐ Noyau constitutionnel (13 modules)
+│   ├── hooks/                  # use-yahria-realtime (WS)
+│   └── lib/yahria/             # ⭐ Noyau constitutionnel (13 modules + realtime)
+├── server.mjs                  # Serveur personnalisé : Next + WebSocket /ws/yahria
 ├── prisma/schema.prisma        # 15 modèles (Tenant, Agent, Task, Evidence…)
 ├── public/docs/                # 🧠 Spec Hybrid Reasoning + 🗺️ Carte architecture
+├── YAHRIA_CANONICAL_BLUEPRINT/ # 📜 Racine canonique §5 : 6 docs d'autorité + 24 domaines
 ├── docs/corpus/                # Corpus constitutionnel (11 originaux + 2 restaurés)
-├── scripts/                    # Générateur de la carte d'architecture
-└── worklog.md                  # (local) journal de travail multi-agents
+├── docs/report/                # 📕 Rapport PDF d'analyse complet + sources
+└── scripts/                    # Tests WS, générateurs (carte, blueprint, rapport)
 ```
 
 ## Conformité constitutionnelle de cette implémentation

@@ -112,7 +112,7 @@ export function checkMinimumContract(input: EvidenceCapture): { ok: boolean; mis
   const required: (keyof EvidenceCapture)[] = [
     'category', 'criticality', 'actorType', 'actorId', 'claim',
   ];
-  const missing = required.filter((k) => input[k] === undefined || input[k] === null || input[k] === '');
+  const missing: string[] = required.filter((k) => input[k] === undefined || input[k] === null || input[k] === '');
   const contextRequired = input.criticality === 'CRITICAL' || input.criticality === 'HIGH';
   if (contextRequired && !input.executionId && !input.taskId && !input.traceId) {
     missing.push('executionId|taskId|traceId (critical evidence requires execution context)');

@@ -9,6 +9,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CommandCenter, CognitiveConsole } from '@/components/yahria/panels-core';
 import { AgentPanel, TaskPanel, ExecutionPanel, EvidencePanel, PolicyPanel, BlueprintPanel } from '@/components/yahria/panels-ops';
+import { RealtimePanel } from '@/components/yahria/realtime-panel';
+import { useYahriaRealtime } from '@/hooks/use-yahria-realtime';
 import { Loader2, ShieldCheck } from 'lucide-react';
 
 interface SystemData {
@@ -30,6 +32,7 @@ export default function Home() {
   const [data, setData] = useState<SystemData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const rt = useYahriaRealtime();
 
   const load = useCallback(async () => {
     try {
@@ -66,8 +69,11 @@ export default function Home() {
             </div>
           </div>
           <div className="hidden md:flex items-center gap-2 text-[10px] font-mono text-slate-500">
-            <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
-            KERNEL ONLINE · POLICY: DENY-BY-DEFAULT
+            <span className={`h-1.5 w-1.5 rounded-full ${
+              rt.status === 'live' ? 'bg-teal-400 animate-pulse' :
+              rt.status === 'connecting' ? 'bg-amber-400 animate-pulse' : 'bg-red-500'
+            }`} />
+            KERNEL ONLINE · POLICY: DENY-BY-DEFAULT · WS: {rt.status.toUpperCase()}
           </div>
         </div>
       </header>
@@ -97,6 +103,7 @@ export default function Home() {
                 ['evidence', 'Preuves'],
                 ['policy', 'Politiques'],
                 ['blueprint', 'Blueprint'],
+                ['realtime', 'Temps réel'],
               ].map(([v, label]) => (
                 <TabsTrigger key={v} value={v}
                   className="text-xs data-[state=active]:bg-teal-500/15 data-[state=active]:text-teal-300 text-slate-400 px-3 py-1.5">
@@ -115,6 +122,9 @@ export default function Home() {
             <TabsContent value="evidence" className="mt-4"><EvidencePanel evidence={data.evidence} onChanged={refresh} /></TabsContent>
             <TabsContent value="policy" className="mt-4"><PolicyPanel policies={seedPolicies(data)} onChanged={refresh} /></TabsContent>
             <TabsContent value="blueprint" className="mt-4"><BlueprintPanel /></TabsContent>
+            <TabsContent value="realtime" className="mt-4">
+              <RealtimePanel status={rt.status} events={rt.events} counters={rt.counters} total={rt.total} onClear={rt.clear} />
+            </TabsContent>
           </Tabs>
         )}
       </main>

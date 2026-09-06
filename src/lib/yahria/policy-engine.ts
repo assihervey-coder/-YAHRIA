@@ -14,6 +14,7 @@ export interface PolicyRuleDef {
   action: string;          // exact action or wildcard "fs.*"
   resource: string;        // exact resource or wildcard "*"
   priority: number;        // lower = evaluated first
+  active?: boolean;        // optional enable switch (undefined = active)
   reason: string;
   version: string;
 }
