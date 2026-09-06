@@ -83,6 +83,15 @@ Règles structurelles clés :
 | `studio.ts` | **Studio S1/S2** — parsing d'arborescence (INV-120), détection de stack, blueprint planifié, génération + vérification par fichier |
 | `studio-pipeline.ts` | **Studio orchestrateur** — machine à états gardée `SUBMITTED→SEALED`, garde politique D.6, preuves par fichier, workspace + ZIP, éditeur IA |
 | `bootstrap.ts` | Amorçage idempotent (seed constitutionnel) |
+| `canonical.ts` | **R8** — substrat canonique (JSON trié, SHA-256/HMAC) — parité TS⇄Python |
+| `proof-carrying.ts` | **R8** — certificats de preuve embarqués, prédicats ré-exécutables, vérificateur indépendant |
+| `merkle-evidence.ts` | **R8** — scellement Merkle des preuves, preuves d'inclusion O(log n), audit avec localisation de falsification |
+| `blast-radius.ts` | **R8** — rayon d'impact sémantique, détection de cycles, auto-DENY constitutionnel (D.6 gouverne) |
+| `debate-arbiter.ts` | **R8** — débat adversarial PROPOSER/CHALLENGER/SECURITY/JUDGE, dissensus archivé |
+| `time-travel.ts` | **R8** — chronologies hash-chaînées, rejeu bit-à-bit, localisation de dérive, bissect forensique |
+| `fuzz-constitution.ts` | **R8** — fuzzing de propriétés constitutionnelles (PRNG semé xorshift32, 6 propriétés) |
+| `self-heal.ts` | **R8** — auto-réparation bornée, réparations déterministes, re-scellement par certificat |
+| `attestation.ts` | **R8** — attestation workspace signée (type SLSA/in-toto), vérification + diff anti-régression |
 
 ## API `/api/yahria/*`
 
@@ -100,17 +109,21 @@ Règles structurelles clés :
 | `GET studio/runs/[id]` | Détail d'un run : machine à états, blueprint, fichiers + contenus |
 | `POST studio/runs/[id]/edit` | **Éditeur IA** — régénère un fichier sur instruction, re-scelle le ZIP |
 | `GET studio/runs/[id]/download` | Télécharge la livraison ZIP (état SEALED requis) |
+| `GET / POST supremacy` | **R8** — catalogue + 12 capacités de souveraineté : preuves embarquées, Merkle, blast radius, débat, time-travel, fuzzing, self-heal, attestations |
 | `WS /ws/yahria` | **Flux temps réel** (WebSocket, domaine 11) — handshake `hello → snapshot → events` |
 
 ## YAHRIA Mission Control (UI)
 
-10 panneaux : **Studio autonome · Centre de commande · Raisonnement hybride ·
+11 panneaux : **Studio autonome · Souveraineté R8 · Centre de commande · Raisonnement hybride ·
 Agent OS · Graphe de tâches · Exécutions · Preuves · Politiques · Blueprint ·
 Temps réel**. Le Studio autonome couvre le cycle complet : soumission
 d'arborescence (ou brief seul, l'architecte S2 concevant alors les fichiers),
 validation S1 en direct, progression de la machine à états alimentée par le
 journal WebSocket, navigateur de fichiers générés, éditeur IA par instruction,
-et téléchargement du ZIP scellé. Le panneau temps réel diffuse
+et téléchargement du ZIP scellé. Le panneau **Souveraineté R8** auto-démontre
+en un clic les huit capacités de calibre expert (preuves embarquées, Merkle,
+blast radius, débat adversarial, time-travel, fuzzing, self-heal, attestation)
+avec scénarios réels et preuves affichées. Le panneau temps réel diffuse
 les événements constitutionnels via WebSocket avec reconnexion automatique.
 
 ## Démarrage rapide
@@ -184,19 +197,24 @@ du contrat 00 en fichiers racine autonomes.
 | Studio gouverné | `studio-pipeline.ts` — garde politique avant écriture, preuves par fichier, transitions 422 |
 | 47 invariants | `invariants.ts` — vérification à chaque décision |
 
-## Portage Python du noyau (R7.1 — parité prouvée)
+## Portage Python du noyau (R7.1 — parité prouvée, étendue R8)
 
 Le noyau constitutionnel existe désormais en **deux runtimes** : TypeScript (référence)
 et **Python** (`yahria-core/kernel/` — stdlib pur, zéro dépendance, Python ≥ 3.10).
 La parité est **prouvée, pas supposée** : les fixtures générées depuis le noyau TS sont
 rejouées par pytest — 58/58 verts, zéro divergence (659 paires de transitions, 74
 invariants, 24 domaines, politiques deny-by-default, chaîne de preuves SHA-256
-byte-identique, routeur S1/S2/CASCADE avec rationale exacts). Détails :
-`yahria-core/README.md` · roadmap complète : `docs/R7_PORTAGE_POSTGRESQL_PYTHON.md`.
+byte-identique, routeur S1/S2/CASCADE avec rationale exacts). **R8 étend la parité
+au Supremacy Pack** : racine Merkle, preuves d'inclusion et localisation d'audit
+produites **octet-pour-octet** par `kernel/supremacy.py` (14 tests supplémentaires,
+72/72 verts). Détails : `yahria-core/README.md` · roadmap :
+`docs/R7_PORTAGE_POSTGRESQL_PYTHON.md` · pack R8 : `docs/R8_SUPREMACY_PACK.md`.
 
 ```bash
-npx tsx scripts/r7-parity-fixtures.ts   # générer les fixtures depuis le noyau TS
-cd yahria-core && python3 -m pytest     # rejouer la grille de parité (58 tests)
+npx tsx scripts/r7-parity-fixtures.ts   # générer les fixtures noyau depuis le TS
+npx tsx scripts/r8-supremacy-fixtures.ts # générer les fixtures R8 (Merkle) depuis le TS
+cd yahria-core && python3 -m pytest     # rejouer la grille de parité (72 tests)
+npx tsx scripts/r8-supremacy-tests.ts   # suite de preuves R8 côté TS (48 vérifications)
 ```
 
 ## Licence & attribution
