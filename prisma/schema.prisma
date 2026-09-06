@@ -1,0 +1,255 @@
+// ═══════════════════════════════════════════════════════════════════
+// YAHRIA — AUTONOMOUS HYBRID REASONING INTELLIGENCE ASSISTANT FOR CODE
+// Data Constitution — persistence layer (Prisma / SQLite adaptation)
+// Document ID: YAHRIA-DB-001 | Authority: CONSTITUTIONAL
+// Hierarchy: TENANT → ORGANIZATION → PROJECT → REPOSITORY → WORKSPACE
+// ═══════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── DOMAIN 02/03 — IDENTITY, ORGANIZATION & MULTI-TENANCY ──────────
+
+model Tenant {
+  id             String   @id @default(cuid())
+  key            String   @unique
+  name           String
+  status         String   @default("ACTIVE") // ACTIVE | SUSPENDED | ARCHIVED
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  organizations  Organization[]
+}
+
+model Organization {
+  id           String   @id @default(cuid())
+  tenantId     String
+  name         String
+  slug         String   @unique
+  status       String   @default("ACTIVE")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  projects     Project[]
+}
+
+model Project {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  slug           String   @unique
+  description    String?
+  status         String   @default("ACTIVE")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  tasks          Task[]
+}
+
+// ── DOMAIN 00 — CONSTITUTION: CANONICAL DOMAINS & INVARIANTS ───────
+
+model Domain {
+  id          String  @id @default(cuid())
+  code        String  @unique // "00" ..."23"
+  name        String
+  purpose     String
+  phase       Int     // canonical implementation order (dependency graph)
+  status      String  @default("NOT_STARTED") // NOT_STARTED | IMPLEMENTING | VERIFIED | PROMOTED
+  isCore      Boolean @default(false)
+}
+
+// ── DOMAIN 05 — AGENT OPERATING SYSTEM ──────────────────────────────
+
+model Agent {
+  id          String   @id @default(cuid())
+  key         String   @unique // explorer | architect | planner | coder | debugger | tester | reviewer | security | verifier
+  name        String
+  role        String
+  capabilities String  @default("[]") // JSON array
+  autonomy    String   @default("GOVERNED") // GOVERNED | SUPERVISED | RESTRICTED
+  status      String   @default("IDLE") // IDLE | RUNNING | BLOCKED | FAILED | TERMINATED
+  runs        AgentRun[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AgentRun {
+  id          String   @id @default(cuid())
+  agentId     String
+  taskId      String?
+  state       String   @default("STARTED") // STARTED | PERCEIVING | REASONING | ACTING | VERIFYING | COMPLETED | FAILED | BLOCKED
+  input       String?
+  output      String?
+  traceId     String?
+  startedAt   DateTime @default(now())
+  finishedAt  DateTime?
+  agent       Agent    @relation(fields: [agentId], references: [id])
+  task        Task?    @relation(fields: [taskId], references: [id])
+}
+
+// ── DOMAIN 06/07 — COGNITIVE CORE & TASK GRAPH ─────────────────────
+
+model CognitiveTrace {
+  id            String   @id @default(cuid())
+  goal          String
+  route         String   // SYSTEM_1_FAST | SYSTEM_2_DEEP | CASCADE_1_TO_2 | BLOCKED_BY_POLICY
+  complexity    Float    @default(0) // 0..1
+  uncertainty   Float    @default(0) // 0..1 INV-081
+  worldState    String?  // JSON WorldState
+  plan          String?  // JSON plan steps
+  verdict       String?  // PASS | FAIL | REJECTED | PENDING
+  reflection    String?
+  evidenceIds   String   @default("[]") // JSON array
+  durationMs    Int      @default(0)
+  createdAt     DateTime @default(now())
+}
+
+model Task {
+  id             String   @id @default(cuid())
+  projectId      String?
+  title          String
+  kind           String   @default("IMPLEMENT") // IMPLEMENT | REVIEW | TEST | FIX | PLAN
+  state          String   @default("PENDING") // PENDING|READY|RUNNING|BLOCKED|FAILED|CANCELLED|COMPLETED
+  priority       Int      @default(5)
+  payload        String?
+  result         String?
+  dependsOn      String   @default("[]") // JSON array of task ids
+  retries        Int      @default(0)
+  maxRetries     Int      @default(3)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  project        Project? @relation(fields: [projectId], references: [id])
+  runs           AgentRun[]
+}
+
+// ── DOMAIN 08 — EXECUTION FABRIC ────────────────────────────────────
+
+model Execution {
+  id            String   @id @default(cuid())
+  taskId        String?
+  agentRunId    String?
+  state         String   @default("QUEUED") // QUEUED|POLICY_CHECK|PROVISIONING|RUNNING|VERIFYING|SUCCEEDED|FAILED|CANCELLED|TIMED_OUT
+  sandboxProfile String  @default("STANDARD") // STANDARD|RESTRICTED|PARANOID
+  resourceLimits String  @default("{}") // JSON {cpu,memoryMb,diskMb,pids,timeoutMs}
+  policyDecision String? // JSON policy evaluation
+  exitCode      Int?
+  stdout        String?
+  durationMs    Int      @default(0)
+  attempts      Int      @default(0)
+  traceId       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ── DOMAIN 11 — OBSERVABILITY & EVIDENCE ENGINE ────────────────────
+
+model Evidence {
+  id           String   @id @default(cuid())
+  evidenceUid  String   @unique // EV-{CATEGORY}-{DOMAIN}-{SEQ}
+  category     String   // CODE|BUILD|TEST|EXECUTION|TOOL|AGENT|MODEL|POLICY|SECURITY|...
+  criticality  String   @default("STANDARD") // CRITICAL|HIGH|STANDARD|LOW|INFORMATIONAL
+  state        String   @default("CAPTURED") // DECLARED|CAPTURED|NORMALIZED|HASHED|LINKED|VERIFIED|SEALED|RETAINED|ARCHIVED|EXPIRED|DISPOSED|INVALID|CORRUPTED
+  actorType    String   // HUMAN|AGENT|SYSTEM|TOOL|MODEL
+  actorId      String
+  claim        String
+  payload      String?  // JSON
+  contentHash  String?  // SHA-256 content addressing
+  prevHash     String?  // hash-chain lineage
+  executionId  String?
+  taskId       String?
+  traceId      String?
+  createdAt    DateTime @default(now())
+  sealedAt     DateTime?
+}
+
+model SystemEvent {
+  id         String   @id @default(cuid())
+  level      String   @default("INFO") // INFO|WARNING|ERROR|HIGH|CRITICAL|CATASTROPHIC
+  source     String   // domain code or kernel component
+  kind       String   // STATE_TRANSITION|POLICY_DECISION|FAILURE|EVIDENCE|BOOTSTRAP|COGNITIVE
+  message    String
+  correlationId String? // execution_id / trace_id / task_id
+  payload    String?
+  createdAt  DateTime @default(now())
+}
+
+// ── DOMAIN 12 — POLICY CONTROL PLANE ───────────────────────────────
+
+model PolicyRule {
+  id          String   @id @default(cuid())
+  ruleId      String   @unique // POL-001...
+  name        String
+  effect      String   // DENY | ALLOW | REQUIRE_APPROVAL
+  scope       String   // TOOL|EXECUTION|FILESYSTEM|NETWORK|EVOLUTION|MODEL
+  condition   String   // JSON condition {resource, action, context}
+  priority    Int      @default(100)
+  version     String   @default("1.0.0")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model PolicyDecision {
+  id          String   @id @default(cuid())
+  ruleId      String?
+  request     String   // JSON {actor, action, resource, context}
+  effect      String   // ALLOW | DENY | REQUIRE_APPROVAL
+  reason      String
+  decidedBy   String   @default("POLICY_ENGINE")
+  createdAt   DateTime @default(now())
+}
+
+// ── DOMAIN 13 — MEMORY SYSTEM ───────────────────────────────────────
+
+model MemoryRecord {
+  id          String   @id @default(cuid())
+  kind        String   // WORKING|EPISODIC|SEMANTIC|ARCHITECTURAL
+  key         String
+  content     String
+  confidence  Float    @default(0.5) // INV-140: memory is not automatic truth
+  validation  String   @default("UNVERIFIED") // VERIFIED|PROBABLE|UNCERTAIN|UNKNOWN|FALSE
+  source      String   // where it came from
+  taskId      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ── FAILURE & RECOVERY MANIFEST ─────────────────────────────────────
+
+model FailureEvent {
+  id           String   @id @default(cuid())
+  failureUid   String   @unique // FAIL-{seq}
+  failureType  String   // F001..F025 canonical taxonomy
+  severity     String   // INFO|WARNING|ERROR|HIGH|CRITICAL|CATASTROPHIC
+  state        String   @default("DETECTED") // DETECTED|CLASSIFIED|CONTAINED|RECOVERING|RECOVERED|UNRECOVERABLE|ESCALATED|QUARANTINED
+  source       String
+  message      String
+  fingerprint  String?  // stack hash for dedup
+  strategy     String?  // RETRY|BACKOFF|ROLLBACK|COMPENSATION|REPLAN|TOOL_SWITCH|MODEL_SWITCH|ESCALATE
+  executionId  String?
+  taskId       String?
+  createdAt    DateTime @default(now())
+  resolvedAt   DateTime?
+}
+
+// ── HYBRID REASONING SPEC — router telemetry ────────────────────────
+
+model ReasoningRoute {
+  id          String   @id @default(cuid())
+  traceId     String
+  request     String
+  signals     String   @default("{}") // JSON detected signals
+  chosenPath  String   // SYSTEM_1 | SYSTEM_2 | CASCADE
+  escalationReason String?
+  s1Verdict   String?
+  s2Verdict   String?
+  agreement   Boolean?
+  finalAnswer String?
+  latencyS1Ms Int      @default(0)
+  latencyS2Ms Int      @default(0)
+  createdAt   DateTime @default(now())
+}

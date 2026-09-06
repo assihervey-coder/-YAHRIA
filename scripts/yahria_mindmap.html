@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', sans-serif; }
+#mindmap { padding: 60px; display: inline-block; min-width: 100%; position: relative; }
+#mindmap > svg.lines { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+
+.root-node {
+  color: white; font-size: 20px; font-weight: 700;
+  padding: 18px 28px; border-radius: 12px;
+  white-space: nowrap; flex-shrink: 0; align-self: center;
+  text-align: center; line-height: 1.4;
+}
+.root-node .root-sub { display: block; font-size: 12px; font-weight: 400; opacity: 0.85; margin-top: 4px; }
+#mindmap[data-intent="technical"] .root-node {
+  background: linear-gradient(135deg, #334155, #475569);
+  box-shadow: 0 4px 12px rgba(51,65,85,0.25);
+}
+
+.tree-layout { display: flex; align-items: center; gap: 0; position: relative; }
+.left-side, .right-side { display: flex; flex-direction: column; gap: 22px; }
+.center-root { padding: 0 56px; }
+
+.branch { display: flex; align-items: center; gap: 0; }
+.left-side .branch { flex-direction: row-reverse; }
+.branch-node {
+  font-size: 15px; font-weight: 600;
+  padding: 10px 20px; border-radius: 8px;
+  white-space: nowrap; flex-shrink: 0; border: 2px solid;
+  background: #F8FAFC;
+}
+.children { display: flex; flex-direction: column; gap: 7px; margin-left: 48px; align-items: flex-start; }
+.left-side .children { align-items: flex-end; padding-right: 16px; margin-left: 0; margin-right: 48px; }
+.right-side .children { align-items: flex-start; padding-left: 16px; }
+
+.leaf {
+  font-size: 13px; font-weight: 400; color: #475569;
+  padding: 5px 12px; background: #FAFAFA;
+  border-radius: 12px; border: 1px solid #E5E7EB;
+  white-space: nowrap; line-height: 1.5; width: fit-content;
+}
+.leaf-desc { font-size: 11.5px; color: #94A3B8; font-weight: 400; margin-left: 6px; }
+.leaf-desc::before { content: '— '; color: #CBD5E1; }
+
+/* Branch color classes (light bg + saturated border = template pattern) */
+.c-blue   { background: #EFF6FF; border-color: #3B82F6; color: #1E40AF; }
+.c-purple { background: #F5F3FF; border-color: #8B5CF6; color: #5B21B6; }
+.c-cyan   { background: #ECFEFF; border-color: #06B6D4; color: #155E75; }
+.c-teal   { background: #F0FDFA; border-color: #14B8A6; color: #134E4A; }
+.c-amber  { background: #FFF7ED; border-color: #F59E0B; color: #92400E; }
+.c-green  { background: #F0FDF4; border-color: #10B981; color: #065F46; }
+.c-red    { background: #FEF2F2; border-color: #EF4444; color: #991B1B; }
+.c-slate  { background: #F1F5F9; border-color: #64748B; color: #334155; }
+</style>
+</head>
+<body>
+<div id="mindmap" data-intent="technical">
+  <div class="tree-layout">
+
+    <div class="left-side">
+
+      <div class="branch c-purple">
+        <div class="branch-node c-purple">Raisonnement Hybride (D.06)</div>
+        <div class="children">
+          <div class="leaf">Routeur hybride<span class="leaf-desc">signaux → complexité + incertitude</span></div>
+          <div class="leaf">Système 1 — rapide<span class="leaf-desc">règles déterministes &lt; 50 ms</span></div>
+          <div class="leaf">Système 2 — profond<span class="leaf-desc">délibération LLM bornée</span></div>
+          <div class="leaf">Cascade gouvernée<span class="leaf-desc">escalade S1 → S2 sur incertitude</span></div>
+          <div class="leaf">Pipeline de verdict<span class="leaf-desc">INV-080 : sortie ≠ vérité</span></div>
+        </div>
+      </div>
+
+      <div class="branch c-cyan">
+        <div class="branch-node c-cyan">Tâches &amp; Exécution (D.07/08)</div>
+        <div class="children">
+          <div class="leaf">Graphe DAG<span class="leaf-desc">décomposition &amp; ordonnancement</span></div>
+          <div class="leaf">13+ machines à états<span class="leaf-desc">transitions gardées, interdits silencieux</span></div>
+          <div class="leaf">Retry gouverné<span class="leaf-desc">backoff exponentiel, max 3 (INV-092)</span></div>
+          <div class="leaf">Recovery<span class="leaf-desc">rollback, compensation, replan</span></div>
+        </div>
+      </div>
+
+      <div class="branch c-green">
+        <div class="branch-node c-green">Sandbox &amp; Outils (D.09/10)</div>
+        <div class="children">
+          <div class="leaf">OverlayFS<span class="leaf-desc">host lecture seule (FS-001)</span></div>
+          <div class="leaf">Registre d'outils<span class="leaf-desc">versionné + capacités (INV-062)</span></div>
+          <div class="leaf">Deny-by-default<span class="leaf-desc">UNKNOWN → DENY (INV-133)</span></div>
+          <div class="leaf">Limites ressources<span class="leaf-desc">CPU / RAM / PID / timeout (INV-042)</span></div>
+        </div>
+      </div>
+
+      <div class="branch c-amber">
+        <div class="branch-node c-amber">Constitution Données (D.16)</div>
+        <div class="children">
+          <div class="leaf">PostgreSQL + UUIDv7<span class="leaf-desc">4 systèmes de vérité</span></div>
+          <div class="leaf">Multi-tenant RLS<span class="leaf-desc">Tenant → Org → Projet (INV-020)</span></div>
+          <div class="leaf">pgvector &amp; graphes<span class="leaf-desc">recherche sémantique</span></div>
+          <div class="leaf">~50 tables Execution Fabric<span class="leaf-desc">schéma industriel V2.2.2-D</span></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="center-root">
+      <div class="root-node">YAHRIA CODE OS<span class="root-sub">Assistant Autonome à Raisonnement Hybride pour le Code</span></div>
+    </div>
+
+    <div class="right-side">
+
+      <div class="branch c-blue">
+        <div class="branch-node c-blue">Constitution (D.00)</div>
+        <div class="children">
+          <div class="leaf">Contrat racine<span class="leaf-desc">bootstrap 14 étapes obligatoires</span></div>
+          <div class="leaf">47 invariants globaux<span class="leaf-desc">INV-001 → INV-211, figés V1.0.0</span></div>
+          <div class="leaf">24 domaines canoniques<span class="leaf-desc">carte autoritaire du système</span></div>
+          <div class="leaf">Graphe de dépendances<span class="leaf-desc">ordre de construction + interdits</span></div>
+        </div>
+      </div>
+
+      <div class="branch c-teal">
+        <div class="branch-node c-teal">Agent OS (D.05)</div>
+        <div class="children">
+          <div class="leaf">9 agents canoniques<span class="leaf-desc">explorer → architect → … → verifier</span></div>
+          <div class="leaf">Capacités déclarées<span class="leaf-desc">INTENT → CAPACITÉ → POLITIQUE (INV-071)</span></div>
+          <div class="leaf">Vérificateur indépendant<span class="leaf-desc">générateur ≠ vérificateur</span></div>
+          <div class="leaf">Autonomie gouvernée<span class="leaf-desc">AUTONOMIE &lt; POLITIQUE (INV-073)</span></div>
+        </div>
+      </div>
+
+      <div class="branch c-red">
+        <div class="branch-node c-red">Preuves &amp; Observabilité (D.11)</div>
+        <div class="children">
+          <div class="leaf">Moteur de preuves<span class="leaf-desc">19 catégories, cycle scellé</span></div>
+          <div class="leaf">Chaîne de hachage SHA-256<span class="leaf-desc">adressage par contenu</span></div>
+          <div class="leaf">CLAIM ≠ EVIDENCE<span class="leaf-desc">provenance + intégrité + lignée</span></div>
+          <div class="leaf">Replay &amp; forensique<span class="leaf-desc">reconstruction d'exécutions</span></div>
+        </div>
+      </div>
+
+      <div class="branch c-slate">
+        <div class="branch-node c-slate">Triptyque de Gouvernance</div>
+        <div class="children">
+          <div class="leaf">D.6 — Vérité &amp; Gouvernance<span class="leaf-desc">preuves + politiques, autorité finale</span></div>
+          <div class="leaf">D.7 — Mémoire &amp; Apprentissage<span class="leaf-desc">MÉMOIRE ≠ POLITIQUE</span></div>
+          <div class="leaf">D.8 — Auto-évolution<span class="leaf-desc">proposer seulement — D.6 gouverne D.8</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+function drawAllLines() {
+  const map = document.getElementById('mindmap');
+  if (!map) { console.error('no #mindmap'); return; }
+  const cRect = map.getBoundingClientRect();
+  const old = map.querySelector('svg.lines');
+  if (old) old.remove();
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.classList.add('lines');
+  svg.setAttribute('width', cRect.width); svg.setAttribute('height', cRect.height);
+  svg.style.cssText = 'position:absolute;top:0;left:0;pointer-events:none;z-index:1;';
+  let lineCount = 0;
+  function rel(el) {
+    const r = el.getBoundingClientRect();
+    return { cx: r.left - cRect.left + r.width/2, cy: r.top - cRect.top + r.height/2, left: r.left - cRect.left, right: r.right - cRect.left };
+  }
+  function drawLine(x1, y1, x2, y2, color, width) {
+    const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    l.setAttribute('x1', Math.round(x1)); l.setAttribute('y1', Math.round(y1));
+    l.setAttribute('x2', Math.round(x2)); l.setAttribute('y2', Math.round(y2));
+    l.setAttribute('stroke', color); l.setAttribute('stroke-width', width);
+    l.setAttribute('stroke-linecap', 'round');
+    svg.appendChild(l); lineCount++;
+  }
+  const lineStyles = [
+    { color: '#64748B', width: 2.5 },
+    { color: '#94A3B8', width: 2 },
+    { color: '#A8B4C2', width: 1.5 },
+    { color: '#B8C2CC', width: 1.2 },
+    { color: '#CBD5E1', width: 1 },
+  ];
+  function getLineStyle(branchColor, depth) {
+    const s = lineStyles[Math.min(depth, lineStyles.length - 1)];
+    return { color: s.color, width: s.width };
+  }
+  function connect(parentEl, childEls, color, width, dir) {
+    if (!childEls.length) return;
+    const p = rel(parentEl);
+    const startX = dir === 'left' ? p.left : p.right;
+    const startY = p.cy;
+    if (childEls.length === 1) {
+      const c = rel(childEls[0]);
+      const endX = dir === 'left' ? c.right : c.left;
+      const midY = Math.round((startY + c.cy) / 2);
+      drawLine(startX, midY, endX, midY, color, width);
+      return;
+    }
+    let closestEdge;
+    if (dir === 'left') closestEdge = Math.max(...childEls.map(ch => rel(ch).right));
+    else closestEdge = Math.min(...childEls.map(ch => rel(ch).left));
+    const childClearance = 16;
+    const midpoint = startX + (closestEdge - startX) / 2;
+    const midFromChild = dir === 'left' ? closestEdge + childClearance : closestEdge - childClearance;
+    const midX = dir === 'left' ? Math.min(midpoint, midFromChild) : Math.max(midpoint, midFromChild);
+    drawLine(startX, startY, midX, startY, color, width);
+    const allCYs = childEls.map(ch => rel(ch).cy);
+    const minY = Math.min(startY, ...allCYs);
+    const maxY = Math.max(startY, ...allCYs);
+    drawLine(midX, minY, midX, maxY, color, width);
+    childEls.forEach(ch => {
+      const c = rel(ch);
+      const endX = dir === 'left' ? c.right : c.left;
+      drawLine(midX, c.cy, endX, c.cy, color, width);
+    });
+  }
+  const NODE_SEL = '.branch-node, .sub-node, .leaf, .deep-node';
+  const CONTAINER_SEL = ':scope > .children, :scope > .leaf-group, :scope > .deep-group';
+  function processChildren(parentNodeEl, containerEl, branchColor, depth, dir) {
+    if (!containerEl) return;
+    const childNodeEls = [];
+    for (const wrapper of containerEl.children) {
+      const nodeEl = wrapper.matches?.(NODE_SEL) ? wrapper : wrapper.querySelector(NODE_SEL);
+      if (nodeEl) childNodeEls.push(nodeEl);
+    }
+    if (!childNodeEls.length) return;
+    const style = getLineStyle(branchColor, depth);
+    connect(parentNodeEl, childNodeEls, style.color, style.width, dir);
+    for (const wrapper of containerEl.children) {
+      const nodeEl = wrapper.matches?.(NODE_SEL) ? wrapper : wrapper.querySelector(NODE_SEL);
+      if (!nodeEl) continue;
+      wrapper.querySelectorAll(CONTAINER_SEL).forEach(nc => processChildren(nodeEl, nc, branchColor, depth + 1, dir));
+    }
+  }
+  const rootNode = map.querySelector('.root-node');
+  if (!rootNode) { console.error('no .root-node'); return; }
+  const leftBranches = map.querySelectorAll('.left-side > .branch');
+  const leftBranchNodes = [];
+  leftBranches.forEach(b => { const n = b.querySelector('.branch-node'); if (n) leftBranchNodes.push(n); });
+  if (leftBranchNodes.length) connect(rootNode, leftBranchNodes, lineStyles[0].color, lineStyles[0].width, 'left');
+  leftBranches.forEach(b => {
+    const n = b.querySelector('.branch-node'); if (!n) return;
+    processChildren(n, b.querySelector(':scope > .children'), null, 1, 'left');
+  });
+  const rightBranches = map.querySelectorAll('.right-side > .branch');
+  const rightBranchNodes = [];
+  rightBranches.forEach(b => { const n = b.querySelector('.branch-node'); if (n) rightBranchNodes.push(n); });
+  if (rightBranchNodes.length) connect(rootNode, rightBranchNodes, lineStyles[0].color, lineStyles[0].width, 'right');
+  rightBranches.forEach(b => {
+    const n = b.querySelector('.branch-node'); if (!n) return;
+    processChildren(n, b.querySelector(':scope > .children'), null, 1, 'right');
+  });
+  map.insertBefore(svg, map.firstChild);
+  console.log('Drew ' + lineCount + ' lines');
+}
+window.addEventListener('load', () => setTimeout(drawAllLines, 300));
+</script>
+</body>
+</html>
