@@ -65,3 +65,4 @@ server.log
 /scripts/report_body.pdf
 /scripts/report_cover.pdf
 /scripts/report_chart_dims.png
+.zscripts/

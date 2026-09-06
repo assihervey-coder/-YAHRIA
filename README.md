@@ -22,10 +22,15 @@ traçable et prouvée*. Ce dépôt contient :
 2. **YAHRIA Mission Control** — une application Next.js 16 complète (API + UI)
    qui expose le noyau : boucle cognitive, agents, exécutions, preuves,
    politiques et blueprint constitutionnel.
-3. **Le corpus constitutionnel original** (`docs/corpus/`) — les 11 documents
+3. **YAHRIA Studio autonome** — le générateur de code de bout en bout : une
+   arborescence (ou un simple brief) est soumise, l'architecte S2 planifie,
+   l'agent coder génère chaque fichier, la vérification indépendante contrôle,
+   et la mission est **scellée par des preuves** puis livrée en ZIP + éditeur IA
+   de régénération fichier par fichier.
+4. **Le corpus constitutionnel original** (`docs/corpus/`) — les 11 documents
    fondateurs, y compris les 2 fichiers racine manquants désormais restaurés
    (`CANONICAL_INDEX.md`, `DEPENDENCY_GRAPH.md`).
-4. **Les 2 livrables manquants** — la spécification *Hybrid Reasoning*
+5. **Les 2 livrables manquants** — la spécification *Hybrid Reasoning*
    (`public/docs/HYBRID_REASONING_SPECIFICATION.md`) et la carte d'architecture
    visuelle (`public/docs/YAHRIA_CARTE_ARCHITECTURE.png`).
 
@@ -75,6 +80,8 @@ Règles structurelles clés :
 | `execution-fabric.ts` | Sandbox 3 profils, OverlayFS, taxonomie d'échecs F001–F025 |
 | `perception.ts` | World State — perception de l'environnement d'exécution |
 | `cognitive-loop.ts` | Boucle cognitive complète, gouvernée de bout en bout |
+| `studio.ts` | **Studio S1/S2** — parsing d'arborescence (INV-120), détection de stack, blueprint planifié, génération + vérification par fichier |
+| `studio-pipeline.ts` | **Studio orchestrateur** — machine à états gardée `SUBMITTED→SEALED`, garde politique D.6, preuves par fichier, workspace + ZIP, éditeur IA |
 | `bootstrap.ts` | Amorçage idempotent (seed constitutionnel) |
 
 ## API `/api/yahria/*`
@@ -88,22 +95,30 @@ Règles structurelles clés :
 | `POST evidence` | Cycle de preuve : `capture → verify → seal` (SHA-256 chaîné) |
 | `POST policy` | Évaluer une décision contre le contrôle de politique |
 | `GET / POST tasks` | Graphe de tâches + transitions gardées par machine à états |
+| `POST studio/parse` | Validation S1 d'une arborescence (chemins dangereux refusés, stack, rôles) |
+| `GET / POST studio/runs` | Lister les missions / soumettre une mission de génération autonome |
+| `GET studio/runs/[id]` | Détail d'un run : machine à états, blueprint, fichiers + contenus |
+| `POST studio/runs/[id]/edit` | **Éditeur IA** — régénère un fichier sur instruction, re-scelle le ZIP |
+| `GET studio/runs/[id]/download` | Télécharge la livraison ZIP (état SEALED requis) |
 | `WS /ws/yahria` | **Flux temps réel** (WebSocket, domaine 11) — handshake `hello → snapshot → events` |
 
 ## YAHRIA Mission Control (UI)
 
-9 panneaux : **Centre de commande · Raisonnement hybride · Agent OS · Graphe de
-tâches · Exécutions · Preuves · Politiques · Blueprint · Temps réel** (le blueprint
-affiche la constitution : invariants, domaines, graphe de dépendances, livrables
-restaurés ; le panneau temps réel diffuse les événements constitutionnels via
-WebSocket avec reconnexion automatique).
+10 panneaux : **Studio autonome · Centre de commande · Raisonnement hybride ·
+Agent OS · Graphe de tâches · Exécutions · Preuves · Politiques · Blueprint ·
+Temps réel**. Le Studio autonome couvre le cycle complet : soumission
+d'arborescence (ou brief seul, l'architecte S2 concevant alors les fichiers),
+validation S1 en direct, progression de la machine à états alimentée par le
+journal WebSocket, navigateur de fichiers générés, éditeur IA par instruction,
+et téléchargement du ZIP scellé. Le panneau temps réel diffuse
+les événements constitutionnels via WebSocket avec reconnexion automatique.
 
 ## Démarrage rapide
 
 ```bash
 # Prérequis : Node 20+ (ou Bun), SQLite/PostgreSQL via Prisma
 bun install            # ou npm install
-bun run db:push        # crée le schéma Prisma (15 modèles)
+bun run db:push        # crée le schéma Prisma (17 modèles)
 bun run db:generate    # client Prisma
 bun run dev            # http://localhost:3000 — serveur personnalisé (Next + WS)
 ```
@@ -140,17 +155,18 @@ du contrat 00 en fichiers racine autonomes.
 .
 ├── src/
 │   ├── app/                    # Next.js App Router (UI + API)
-│   │   ├── api/yahria/         # 7 endpoints constitutionnels
-│   │   └── page.tsx            # Mission Control (9 panneaux)
-│   ├── components/yahria/      # Panneaux Mission Control
+│   │   ├── api/yahria/         # 7 endpoints constitutionnels + studio (5 routes)
+│   │   └── page.tsx            # Mission Control (10 panneaux)
+│   ├── components/yahria/      # Panneaux Mission Control + Studio autonome
 │   ├── hooks/                  # use-yahria-realtime (WS)
-│   └── lib/yahria/             # ⭐ Noyau constitutionnel (13 modules + realtime)
+│   └── lib/yahria/             # ⭐ Noyau constitutionnel (15 modules + realtime)
 ├── server.mjs                  # Serveur personnalisé : Next + WebSocket /ws/yahria
-├── prisma/schema.prisma        # 15 modèles (Tenant, Agent, Task, Evidence…)
+├── prisma/schema.prisma        # 17 modèles (Tenant, Agent, Task, Evidence, GenerationRun…)
 ├── public/docs/                # 🧠 Spec Hybrid Reasoning + 🗺️ Carte architecture
 ├── YAHRIA_CANONICAL_BLUEPRINT/ # 📜 Racine canonique §5 : 6 docs d'autorité + 24 domaines
 ├── docs/corpus/                # Corpus constitutionnel (11 originaux + 2 restaurés)
 ├── docs/report/                # 📕 Rapport PDF d'analyse complet + sources
+├── docs/R7_PORTAGE_POSTGRESQL_PYTHON.md  # 🐘 Roadmap portage PostgreSQL/Python (R7)
 └── scripts/                    # Tests WS, générateurs (carte, blueprint, rapport)
 ```
 
@@ -164,6 +180,7 @@ du contrat 00 en fichiers racine autonomes.
 | Ordre d'implémentation | `domains.ts` — graphe `00→01→16→02→…→23` + dépendances interdites |
 | D.6 gouverne D.8 | `agent-os.ts` + `policy-engine.ts` — évolution soumise à gouvernance |
 | Hybrid Reasoning | `hybrid-reasoning.ts` — S1/S2/CASCADE par `HYBRID_REASONING_SPECIFICATION.md` V1.0.0 |
+| Studio gouverné | `studio-pipeline.ts` — garde politique avant écriture, preuves par fichier, transitions 422 |
 | 47 invariants | `invariants.ts` — vérification à chaque décision |
 
 ## Licence & attribution

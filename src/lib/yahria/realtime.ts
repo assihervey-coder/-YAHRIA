@@ -92,4 +92,13 @@ export const REALTIME_EVENT_TYPES = {
   POLICY_DECISION: 'policy.decision',
   WS_CLIENT_CONNECTED: 'ws.client.connected',
   WS_CLIENT_DISCONNECTED: 'ws.client.disconnected',
+  // Studio autonome (Domain 03/04 — code generation pipeline)
+  STUDIO_RUN_CREATED: 'studio.run.created',
+  STUDIO_TREE_PARSED: 'studio.tree.parsed',
+  STUDIO_BLUEPRINT_PLANNED: 'studio.blueprint.planned',
+  STUDIO_FILE_GENERATED: 'studio.file.generated',
+  STUDIO_FILE_FAILED: 'studio.file.failed',
+  STUDIO_FILE_EDITED: 'studio.file.edited',
+  STUDIO_RUN_SEALED: 'studio.run.sealed',
+  STUDIO_RUN_FAILED: 'studio.run.failed',
 } as const;

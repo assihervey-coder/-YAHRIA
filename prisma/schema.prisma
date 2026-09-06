@@ -236,6 +236,47 @@ model FailureEvent {
   resolvedAt   DateTime?
 }
 
+// ── DOMAIN 03/04 — AUTONOMOUS STUDIO (code generation pipeline) ─────
+
+model GenerationRun {
+  id            String   @id @default(cuid())
+  runUid        String   @unique // RUN-000001
+  name          String
+  brief         String   // mission brief — what the generated application must do
+  treeSpec      String   @default("") // submitted arborescence (raw text, may be empty if AI-designed)
+  stack         String   @default("UNKNOWN") // NEXTJS | NODE | PYTHON | STATIC_WEB | GO | RUST | JAVA | UNKNOWN
+  state         String   @default("SUBMITTED") // SUBMITTED|PERCEIVED|PLANNED|GENERATING|VERIFYING|SEALED|FAILED|CANCELLED (guarded)
+  aiDesignedTree Boolean @default(false) // true = S2 designed the arborescence from the brief
+  blueprint     String?  // JSON: [{path, purpose, dependsOn, keyPoints, order}]
+  stats         String   @default("{}") // JSON {files, generated, failed, bytes, retries, genMs}
+  workspacePath String?  // db/workspaces/<runUid>/
+  zipPath       String?  // db/workspaces/<runUid>.zip
+  error         String?
+  traceId       String?
+  files         GeneratedFile[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model GeneratedFile {
+  id        String  @id @default(cuid())
+  runId     String
+  path      String  // relative path inside the workspace
+  role      String  @default("module") // config|entry|module|component|test|doc|asset
+  state     String  @default("PLANNED") // PLANNED|GENERATING|VERIFIED|FAILED
+  content   String? // generated source (durable — enables preview + repackaging)
+  bytes     Int     @default(0)
+  sha256    String?
+  attempts  Int     @default(0)
+  genMs     Int     @default(0)
+  revision  Int     @default(1) // bumped on studio edit
+  note      String? // verification note / failure reason
+  order     Int     @default(0) // blueprint execution order
+  run       GenerationRun @relation(fields: [runId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
 // ── HYBRID REASONING SPEC — router telemetry ────────────────────────
 
 model ReasoningRoute {

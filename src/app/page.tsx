@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CommandCenter, CognitiveConsole } from '@/components/yahria/panels-core';
 import { AgentPanel, TaskPanel, ExecutionPanel, EvidencePanel, PolicyPanel, BlueprintPanel } from '@/components/yahria/panels-ops';
 import { RealtimePanel } from '@/components/yahria/realtime-panel';
+import { StudioPanel } from '@/components/yahria/studio-panel';
 import { useYahriaRealtime } from '@/hooks/use-yahria-realtime';
 import { Loader2, ShieldCheck } from 'lucide-react';
 
@@ -95,6 +96,7 @@ export default function Home() {
           <Tabs defaultValue="command" className="w-full">
             <TabsList className="bg-slate-900/70 border border-slate-800 h-auto flex-wrap justify-start gap-0.5 p-1">
               {[
+                ['studio', 'Studio autonome'],
                 ['command', 'Centre de commande'],
                 ['cognitive', 'Raisonnement hybride'],
                 ['agents', 'Agent OS'],
@@ -112,6 +114,7 @@ export default function Home() {
               ))}
             </TabsList>
 
+            <TabsContent value="studio" className="mt-4"><StudioPanel events={rt.events} /></TabsContent>
             <TabsContent value="command" className="mt-4"><CommandCenter data={data} /></TabsContent>
             <TabsContent value="cognitive" className="mt-4"><CognitiveConsole /></TabsContent>
             <TabsContent value="agents" className="mt-4"><AgentPanel agents={data.agents} onChanged={refresh} /></TabsContent>
