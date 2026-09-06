@@ -66,8 +66,11 @@ export const EVIDENCE_LIFECYCLE: EvidenceState[] = [
   'DECLARED', 'CAPTURED', 'NORMALIZED', 'HASHED', 'LINKED', 'VERIFIED', 'SEALED',
 ];
 
-export function captureEvidence(input: EvidenceCapture): EvidenceRecord {
-  const payloadJson = input.payload ? JSON.stringify({ ...input.payload, capturedAt: new Date().toISOString() }) : null;
+// `opts.now` (ISO string) injects a deterministic clock — used by parity tests (R7.1).
+// Default behavior (real clock) is unchanged.
+export function captureEvidence(input: EvidenceCapture, opts?: { now?: string }): EvidenceRecord {
+  const capturedAt = opts?.now ?? new Date().toISOString();
+  const payloadJson = input.payload ? JSON.stringify({ ...input.payload, capturedAt }) : null;
   const prevHash = hashChain.length > 0 ? hashChain[hashChain.length - 1] : null;
   const contentHash = hashPayload({
     category: input.category,
@@ -88,7 +91,7 @@ export function captureEvidence(input: EvidenceCapture): EvidenceRecord {
     payload: payloadJson,
     contentHash,
     prevHash,
-    createdAt: new Date().toISOString(),
+    createdAt: capturedAt,
   };
 }
 

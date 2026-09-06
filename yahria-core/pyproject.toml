@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yahria-core"
+version = "2.3.0.r7.1"
+description = "YAHRIA constitutional kernel — Python port (R7.1) with TS parity harness"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "YAHRIA CODE OS" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools]
+packages = ["kernel"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "parity: cross-runtime parity tests (TS fixtures vs Python kernel)",
+    "native: kernel-native behavioral tests",
+]

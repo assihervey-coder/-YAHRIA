@@ -85,11 +85,13 @@ Les 17 modèles actuels (15 + GenerationRun + GeneratedFile) sont repris avec la
 
 ## 4. Phases d'implémentation
 
-### R7.1 — Socle dépôt & constitution Python (1 semaine)
-- Dépôt `yahria-core/` (paquet Python) : `kernel/` porté depuis `src/lib/yahria/` — `invariants.py`, `state_machines.py`, `policy_engine.py`, `evidence_engine.py`, `hybrid_reasoning.py`, `domains.py`, `types.py` (dataclasses/pydantic).
-- Portage mécanique et ordonné : mêmes noms, mêmes constantes, mêmes messages d'erreur → la grille de tests TypeScript existante est transposée en pytest **avant** le portage (tests d'abord = parité prouvable).
-- Livrable : `pytest` vert sur invariants + machines à états (422 sur transition illégale incluse).
-- Critère d'acceptation : 100 % des cas de test TS transposés, zéro divergence de verdict.
+### R7.1 — Socle dépôt & constitution Python (1 semaine) — ✅ TERMINÉ
+
+- Dépôt `yahria-core/` (paquet Python) : `kernel/` porté depuis `src/lib/yahria/` — `invariants.py`, `state_machines.py`, `policy_engine.py`, `evidence_engine.py`, `hybrid_reasoning.py`, `domains.py`, `types.py` (dataclasses/enums stdlib, zéro dépendance).
+- Portage mécanique et ordonné : mêmes noms, mêmes constantes, mêmes messages d'erreur → la grille de parité est générée depuis le noyau TypeScript (`scripts/r7-parity-fixtures.ts` → `yahria-core/tests/fixtures/parity/fixtures.json`) et rejouée par pytest.
+- Détails d'implémentation documentés dans `yahria-core/README.md` (émulation `\b` ASCII de JS, `toFixed` ECMA-262 via Fraction, JSON.stringify canonique, horloge injectable `captureEvidence(input, { now })` — ajout rétrocompatible côté TS).
+- Livrable : `pytest` vert — **58/58 tests** (659 paires de transitions exhaustives, 74 invariants, 24 domaines, 10+20 politiques, chaîne de preuves SHA-256 byte-identique, 20 routages S1/S2/CASCADE avec rationale exacts).
+- Critère d'acceptation : ✅ 100 % des cas transposés, **zéro divergence de verdict** (échec bloquant en cas de diff, y compris sur les messages d'erreur et les chaînes de précédence).
 
 ### R7.2 — Persistance PostgreSQL (1,5 semaine)
 - Schéma Alembic complet (§3), `docker-compose` PostgreSQL 16 + Redis 7, connection pool asyncpg.

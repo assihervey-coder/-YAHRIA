@@ -166,8 +166,9 @@ du contrat 00 en fichiers racine autonomes.
 ├── YAHRIA_CANONICAL_BLUEPRINT/ # 📜 Racine canonique §5 : 6 docs d'autorité + 24 domaines
 ├── docs/corpus/                # Corpus constitutionnel (11 originaux + 2 restaurés)
 ├── docs/report/                # 📕 Rapport PDF d'analyse complet + sources
-├── docs/R7_PORTAGE_POSTGRESQL_PYTHON.md  # 🐘 Roadmap portage PostgreSQL/Python (R7)
-└── scripts/                    # Tests WS, générateurs (carte, blueprint, rapport)
+├── docs/R7_PORTAGE_POSTGRESQL_PYTHON.md  # 🐘 Roadmap portage PostgreSQL/Python (R7.1 ✅)
+├── yahria-core/                # 🐍 Noyau constitutionnel Python (port R7.1, parité TS prouvée)
+└── scripts/                    # Tests WS, générateurs (carte, blueprint, rapport, fixtures parité R7.1)
 ```
 
 ## Conformité constitutionnelle de cette implémentation
@@ -182,6 +183,21 @@ du contrat 00 en fichiers racine autonomes.
 | Hybrid Reasoning | `hybrid-reasoning.ts` — S1/S2/CASCADE par `HYBRID_REASONING_SPECIFICATION.md` V1.0.0 |
 | Studio gouverné | `studio-pipeline.ts` — garde politique avant écriture, preuves par fichier, transitions 422 |
 | 47 invariants | `invariants.ts` — vérification à chaque décision |
+
+## Portage Python du noyau (R7.1 — parité prouvée)
+
+Le noyau constitutionnel existe désormais en **deux runtimes** : TypeScript (référence)
+et **Python** (`yahria-core/kernel/` — stdlib pur, zéro dépendance, Python ≥ 3.10).
+La parité est **prouvée, pas supposée** : les fixtures générées depuis le noyau TS sont
+rejouées par pytest — 58/58 verts, zéro divergence (659 paires de transitions, 74
+invariants, 24 domaines, politiques deny-by-default, chaîne de preuves SHA-256
+byte-identique, routeur S1/S2/CASCADE avec rationale exacts). Détails :
+`yahria-core/README.md` · roadmap complète : `docs/R7_PORTAGE_POSTGRESQL_PYTHON.md`.
+
+```bash
+npx tsx scripts/r7-parity-fixtures.ts   # générer les fixtures depuis le noyau TS
+cd yahria-core && python3 -m pytest     # rejouer la grille de parité (58 tests)
+```
 
 ## Licence & attribution
 
