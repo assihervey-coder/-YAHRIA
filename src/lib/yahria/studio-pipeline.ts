@@ -40,6 +40,12 @@ export const STUDIO_EVENTS = {
   FILE_EDITED: 'studio.file.edited',
   RUN_SEALED: 'studio.run.sealed',
   RUN_FAILED: 'studio.run.failed',
+  // R11 — preuve live (sandbox execution)
+  LIVE_STARTED: 'studio.live.started',
+  LIVE_ATTEMPT: 'studio.live.attempt',
+  LIVE_REPAIRED: 'studio.live.repaired',
+  LIVE_PROVED: 'studio.live.proved',
+  LIVE_UNPROVED: 'studio.live.unproved',
 } as const;
 
 function emit(type: string, severity: 'INFO' | 'SUCCESS' | 'WARN' | 'CRITICAL', message: string, runUid: string, payload?: Record<string, unknown>) {
@@ -54,7 +60,7 @@ class IllegalTransitionError extends Error {
   }
 }
 
-async function transitionRun(runId: string, runUid: string, from: StudioRunState, to: StudioRunState): Promise<void> {
+export async function transitionRun(runId: string, runUid: string, from: StudioRunState, to: StudioRunState): Promise<void> {
   const legal = STUDIO_RUN_TRANSITIONS[from];
   if (!legal || !legal.includes(to)) throw new IllegalTransitionError(from, to, runUid);
   await db.generationRun.update({
@@ -250,7 +256,7 @@ async function runStudioPipeline(runId: string): Promise<void> {
     }
 
     const files = await db.generatedFile.findMany({ where: { runId } });
-    const deliverable = files.filter((f) => f.state === 'VERIFIED' && f.content);
+    const deliverable = files.filter((f): f is typeof f & { content: string } => f.state === 'VERIFIED' && Boolean(f.content));
     const workspaceDir = path.join(WORKSPACE_ROOT, runUid);
 
     for (const f of deliverable) {
@@ -325,6 +331,8 @@ export async function editGeneratedFile(runId: string, filePath: string, instruc
     dependsOn: [],
     keyPoints: [
       `MODIFICATION DEMANDÉE: ${instruction.slice(0, 400)}`,
+      // INV-210: une réparation à l'aveugle devine — montrer le contenu actuel est obligatoire
+      ...(file.content ? [`CONTENU ACTUEL DU FICHIER (à corriger, ne pas repartir de zéro):\n${file.content.slice(0, 3500)}`] : []),
       ...(file.content ? ['Le fichier existe déjà — applique la modification en conservant la structure valide.'] : []),
     ],
     order: file.order,
@@ -372,7 +380,7 @@ export async function editGeneratedFile(runId: string, filePath: string, instruc
     await writeFile(target, result.content, 'utf8');
   }
   const all = await db.generatedFile.findMany({ where: { runId, state: 'VERIFIED' } });
-  const zipPath = await packageRunZip(runUid, all.filter((f) => f.content).map((f) => ({ path: f.path, content: f.content })));
+  const zipPath = await packageRunZip(runUid, all.filter((f): f is typeof f & { content: string } => Boolean(f.content)).map((f) => ({ path: f.path, content: f.content })));
   await db.generationRun.update({ where: { id: runId }, data: { zipPath } });
 
   emit(STUDIO_EVENTS.FILE_EDITED, 'SUCCESS', `Studio ${runUid} : ${filePath} édité (rév. ${file.revision + 1}, ${bytes} octets) — ZIP mis à jour`, runUid, { path: filePath, bytes, revision: file.revision + 1 });

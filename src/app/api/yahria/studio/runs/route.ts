@@ -12,7 +12,7 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
       take: 30,
       select: {
-        id: true, runUid: true, name: true, brief: true, stack: true, requestedStack: true, state: true,
+        id: true, runUid: true, name: true, brief: true, stack: true, requestedStack: true, state: true, liveState: true,
         aiDesignedTree: true, stats: true, error: true, traceId: true,
         createdAt: true, updatedAt: true,
         _count: { select: { files: true } },
@@ -44,7 +44,8 @@ export async function POST(req: Request) {
     }
 
     // runUid séquentiel RUN-000001 — retry uniquement sur vraie collision unique (P2002)
-    let run = null;
+    type RunRow = Awaited<ReturnType<typeof db.generationRun.create>>;
+    let run: RunRow | null = null;
     for (let attempt = 0; attempt < 3 && !run; attempt++) {
       const count = await db.generationRun.count();
       const runUid = `RUN-${String(count + 1 + attempt).padStart(6, '0')}`;

@@ -246,7 +246,9 @@ model GenerationRun {
   treeSpec      String   @default("") // submitted arborescence (raw text, may be empty if AI-designed)
   stack         String   @default("UNKNOWN") // NEXTJS | NODE | PYTHON | STATIC_WEB | GO | RUST | JAVA | UNKNOWN
   requestedStack String  @default("AUTO") // langage imposé par l'utilisateur (AUTO = détection S1) — l'intention humaine gouverne (INV-081)
-  state         String   @default("SUBMITTED") // SUBMITTED|PERCEIVED|PLANNED|GENERATING|VERIFYING|SEALED|FAILED|CANCELLED (guarded)
+  state         String   @default("SUBMITTED") // SUBMITTED|PERCEIVED|PLANNED|GENERATING|VERIFYING|SEALED|LIVE_PROVED|FAILED|CANCELLED (guarded)
+  liveState     String   @default("NOT_RUN") // NOT_RUN|RUNNING|PROVED|PARTIAL|UNPROVED — preuve d'exécution réelle (R11)
+  livePort      Int?     // port HTTP utilisé par la sonde live
   aiDesignedTree Boolean @default(false) // true = S2 designed the arborescence from the brief
   blueprint     String?  // JSON: [{path, purpose, dependsOn, keyPoints, order}]
   stats         String   @default("{}") // JSON {files, generated, failed, bytes, retries, genMs}
@@ -255,8 +257,21 @@ model GenerationRun {
   error         String?
   traceId       String?
   files         GeneratedFile[]
+  liveChecks    LiveCheck[]
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// ── R11 — PREUVE LIVE (exécution sandbox) ───────────────────────────
+
+model LiveCheck {
+  id        String   @id @default(cuid())
+  runId     String
+  attempt   Int      // 1..N (budget self-heal)
+  state     String   // PROVED|PARTIAL|UNPROVED
+  report    String   @default("{}") // JSON LiveReport (steps, probes, toolchain)
+  createdAt DateTime @default(now())
+  run       GenerationRun @relation(fields: [runId], references: [id])
 }
 
 model GeneratedFile {

@@ -18,7 +18,7 @@
 
 export type StudioRunState =
   | 'SUBMITTED' | 'PERCEIVED' | 'PLANNED' | 'GENERATING'
-  | 'VERIFYING' | 'SEALED' | 'FAILED' | 'CANCELLED';
+  | 'VERIFYING' | 'SEALED' | 'LIVE_PROVED' | 'FAILED' | 'CANCELLED';
 
 export type FileRole = 'config' | 'entry' | 'component' | 'module' | 'test' | 'doc' | 'asset';
 
@@ -29,13 +29,14 @@ export const STUDIO_RUN_TRANSITIONS: Record<StudioRunState, StudioRunState[]> = 
   PLANNED: ['GENERATING', 'FAILED', 'CANCELLED'],
   GENERATING: ['VERIFYING', 'FAILED', 'CANCELLED'],
   VERIFYING: ['SEALED', 'FAILED'],
-  SEALED: [],
+  SEALED: ['LIVE_PROVED'], // R11 : preuve live réussie (monotone — jamais de retour en arrière)
+  LIVE_PROVED: [],
   FAILED: [],
   CANCELLED: [],
 };
 
 export const STUDIO_STATES: StudioRunState[] = [
-  'SUBMITTED', 'PERCEIVED', 'PLANNED', 'GENERATING', 'VERIFYING', 'SEALED',
+  'SUBMITTED', 'PERCEIVED', 'PLANNED', 'GENERATING', 'VERIFYING', 'SEALED', 'LIVE_PROVED',
 ];
 
 export interface ParsedFile { path: string; role: FileRole; }

@@ -52,14 +52,26 @@ interface GenFile {
 
 interface RunDetail {
   id: string; runUid: string; name: string; brief: string; stack: string; requestedStack?: string; state: string;
+  liveState?: string; livePort?: number | null;
   aiDesignedTree: boolean; stats: string; error: string | null; traceId: string | null;
   files: GenFile[];
+  liveChecks?: LiveCheckRow[];
   createdAt: string;
 }
 
 interface RunSummary {
-  id: string; runUid: string; name: string; stack: string; requestedStack?: string; state: string;
+  id: string; runUid: string; name: string; stack: string; requestedStack?: string; state: string; liveState?: string;
   stats: string; error: string | null; createdAt: string; _count: { files: number };
+}
+
+interface LiveCheckRow { id: string; attempt: number; state: string; report: string; createdAt: string }
+
+interface LiveReportShape {
+  verdict?: string; reason?: string; ms?: number;
+  toolchain?: Record<string, string | null>;
+  steps?: { label: string; cmd: string; ok: boolean; exitCode: number | null; ms: number; err: string }[];
+  launch?: { argv: string[]; port: number } | null;
+  probes?: { path: string; status: number | null; ms: number; bodyStart: string }[];
 }
 
 interface StatsShape { files?: number; generated?: number; failed?: number; retries?: number; bytes?: number; genMs?: number }
@@ -154,11 +166,16 @@ README.md`,
 
 // ── Helpers d'affichage ──────────────────────────────────────────
 
-const STUDIO_PIPELINE = ['SUBMITTED', 'PERCEIVED', 'PLANNED', 'GENERATING', 'VERIFYING', 'SEALED'];
+const STUDIO_PIPELINE = ['SUBMITTED', 'PERCEIVED', 'PLANNED', 'GENERATING', 'VERIFYING', 'SEALED', 'LIVE_PROVED'];
 
 function stateBadge(s: string): string {
   switch (s) {
     case 'SEALED': return 'bg-teal-500/15 text-teal-300 border-teal-500/40';
+    case 'LIVE_PROVED': return 'bg-lime-500/15 text-lime-300 border-lime-500/40';
+    case 'PROVED': return 'bg-lime-500/15 text-lime-300 border-lime-500/40';
+    case 'PARTIAL': return 'bg-cyan-500/15 text-cyan-300 border-cyan-500/40';
+    case 'UNPROVED': return 'bg-red-500/15 text-red-300 border-red-500/40';
+    case 'RUNNING': return 'bg-amber-500/15 text-amber-300 border-amber-500/40 animate-pulse';
     case 'VERIFIED': case 'SUCCEEDED': return 'bg-teal-500/15 text-teal-300 border-teal-500/40';
     case 'GENERATING': return 'bg-amber-500/15 text-amber-300 border-amber-500/40 animate-pulse';
     case 'FAILED': return 'bg-red-500/15 text-red-300 border-red-500/40';
@@ -199,6 +216,8 @@ export function StudioPanel({ events }: { events: YahriaEvent[] }) {
   const [editPath, setEditPath] = useState('');
   const [editInstruction, setEditInstruction] = useState('');
   const [editing, setEditing] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadHistory = useCallback(async () => {
@@ -290,6 +309,20 @@ export function StudioPanel({ events }: { events: YahriaEvent[] }) {
       else { setEditInstruction(''); loadDetail(detail.id); }
     } finally {
       setEditing(false);
+    }
+  };
+
+  const executeLive = async () => {
+    if (!detail) return;
+    setExecuting(true);
+    setLiveError(null);
+    try {
+      const res = await fetch(`/api/yahria/studio/runs/${detail.id}/execute`, { method: 'POST' });
+      const json = await res.json();
+      if (!json.ok && !json.verdict) setLiveError(json.error ?? 'échec de la preuve live');
+      await loadDetail(detail.id);
+    } finally {
+      setExecuting(false);
     }
   };
 
@@ -452,6 +485,9 @@ export function StudioPanel({ events }: { events: YahriaEvent[] }) {
                       </div>
                       <div className="text-[10px] text-slate-500 font-mono mt-0.5">
                         {r.runUid} · {r.stack}{r.requestedStack && r.requestedStack !== 'AUTO' ? ` (imposé : ${r.requestedStack})` : ''} · {r._count.files} fichiers · {new Date(r.createdAt).toLocaleTimeString('fr-FR')}
+                        {r.liveState && r.liveState !== 'NOT_RUN' && (
+                          <span className={`ml-1 ${r.liveState === 'PROVED' ? 'text-lime-400' : r.liveState === 'UNPROVED' ? 'text-red-400' : 'text-cyan-400'}`}>· LIVE:{r.liveState}</span>
+                        )}
                       </div>
                     </button>
                   ))}
@@ -487,11 +523,25 @@ export function StudioPanel({ events }: { events: YahriaEvent[] }) {
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     {detail.state === 'SEALED' && (
+                      <Button size="sm" variant="outline" disabled={executing}
+                        className="bg-lime-500/10 border-lime-500/40 text-lime-300 hover:bg-lime-500/20 h-7 text-[11px]"
+                        onClick={executeLive}>
+                        {executing
+                          ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Exécution sandbox…</>
+                          : <><Play className="h-3.5 w-3.5 mr-1.5" /> Exécuter en sandbox</>}
+                      </Button>
+                    )}
+                    {detail.state === 'SEALED' && (
                       <a href={`/api/yahria/studio/runs/${detail.id}/download`}>
                         <Button size="sm" className="bg-teal-600 hover:bg-teal-500 text-white h-7 text-[11px]">
                           <Download className="h-3.5 w-3.5 mr-1.5" /> Télécharger le ZIP
                         </Button>
                       </a>
+                    )}
+                    {detail.liveState && detail.liveState !== 'NOT_RUN' && (
+                      <Badge className={`text-[10px] ${stateBadge(detail.liveState)}`}>
+                        LIVE: {detail.liveState}{detail.livePort ? ` :${detail.livePort}` : ''}
+                      </Badge>
                     )}
                     <Badge className={`text-[10px] ${stateBadge(detail.state)}`}>{detail.state}</Badge>
                   </div>
@@ -544,6 +594,75 @@ export function StudioPanel({ events }: { events: YahriaEvent[] }) {
                 <p className="text-[10px] text-slate-600 font-mono">trace : {detail.traceId} · brief : {detail.brief.slice(0, 120)}{detail.brief.length > 120 ? '…' : ''}</p>
               </CardContent>
             </Card>
+
+            {/* Preuve live — rapport d'exécution sandbox (R11) */}
+            {(executing || (detail.liveChecks && detail.liveChecks.length > 0)) && (() => {
+              const latest = detail.liveChecks?.[0] ?? null;
+              let report: LiveReportShape | null = null;
+              if (latest) { try { report = JSON.parse(latest.report) as LiveReportShape; } catch { report = null; } }
+              return (
+                <Card className="bg-slate-900/60 border-lime-500/20">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-xs text-slate-200 flex items-center gap-2 flex-wrap">
+                      <Play className="h-3.5 w-3.5 text-lime-300" />
+                      Preuve live — exécution sandbox réelle
+                      {latest && (
+                        <Badge className={`text-[9.5px] ${stateBadge(latest.state)}`}>
+                          tentative {latest.attempt} : {latest.state}
+                        </Badge>
+                      )}
+                      {executing && <Loader2 className="h-3.5 w-3.5 animate-spin text-lime-300" />}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {executing && !latest && (
+                      <p className="text-xs text-amber-300">Exécution en cours : installation → syntaxe → build → lancement → sonde HTTP… (cela peut prendre plusieurs minutes)</p>
+                    )}
+                    {report && (
+                      <>
+                        <p className="text-[11px] text-slate-300">{report.reason}</p>
+                        {report.steps && report.steps.length > 0 && (
+                          <div className="space-y-1">
+                            {report.steps.map((s, i) => (
+                              <div key={i} className="flex items-start gap-2 text-[10.5px] font-mono">
+                                <span className={s.ok ? 'text-lime-300' : 'text-red-300'}>{s.ok ? '✓' : '✗'}</span>
+                                <span className="text-slate-400 w-14 shrink-0">{s.label}</span>
+                                <span className="text-slate-300 truncate">{s.cmd}</span>
+                                <span className="text-slate-600 shrink-0">{fmtMs(s.ms)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {report.probes && report.probes.length > 0 && (
+                          <div className="space-y-1">
+                            {report.probes.map((p, i) => (
+                              <div key={i} className="flex items-start gap-2 text-[10.5px] font-mono">
+                                <span className={p.status !== null && p.status < 400 ? 'text-lime-300' : 'text-red-300'}>
+                                  {p.status !== null && p.status < 400 ? '✓' : '✗'}
+                                </span>
+                                <span className="text-slate-300">GET /{p.path.replace(/^\//, '')}</span>
+                                <span className={p.status !== null && p.status < 400 ? 'text-lime-300' : 'text-red-300'}>{p.status ?? '—'}</span>
+                                <span className="text-slate-600">{p.ms} ms</span>
+                                {p.bodyStart && <span className="text-slate-600 truncate">« {p.bodyStart.slice(0, 60)} »</span>}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {report.toolchain && (
+                          <p className="text-[9.5px] text-slate-600 font-mono">
+                            toolchain (INV-190) : {Object.entries(report.toolchain).filter(([, v]) => v).map(([k, v]) => v).join(' · ') || 'aucun outil détecté'}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
+
+            {liveError && (
+              <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">Preuve live : {liveError}</div>
+            )}
 
             {/* Journal temps réel */}
             {runEvents.length > 0 && (

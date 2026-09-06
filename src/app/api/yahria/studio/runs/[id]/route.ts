@@ -7,7 +7,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     const { id } = await ctx.params;
     const run = await db.generationRun.findUnique({
       where: { id },
-      include: { files: { orderBy: { order: 'asc' } } },
+      include: { files: { orderBy: { order: 'asc' } }, liveChecks: { orderBy: { createdAt: 'desc' }, take: 5 } },
     });
     if (!run) return NextResponse.json({ ok: false, error: 'run introuvable' }, { status: 404 });
     return NextResponse.json({ ok: true, run });

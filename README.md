@@ -104,6 +104,8 @@ Règles structurelles clés :
 | `self-heal.ts` | **R8** — auto-réparation bornée, réparations déterministes, re-scellement par certificat |
 | `attestation.ts` | **R8** — attestation workspace signée (type SLSA/in-toto), vérification + diff anti-régression |
 | `llm-fabric.ts` | **R10** — **fabric LLM multi-fournisseurs** (YAHRIA-KRN-023) : route unique INV-212, repli ordonné, circuit breaker, télémétrie masquée INV-213 |
+| `sandbox-executor.ts` | **R11** — **exécuteur sandbox** (YAHRIA-KRN-024) : recettes par stack (install/syntaxe/build/lancement/sondes HTTP), env scrubé, ports bornés, toolchains INV-190 |
+| `live-proof.ts` | **R11** — boucle gouvernée self-heal : POL-009, budget borné, diagnostic fautif, réparation IA, verdicts PROVED/PARTIAL/UNPROVED |
 
 ## API `/api/yahria/*`
 
@@ -123,6 +125,7 @@ Règles structurelles clés :
 | `GET studio/runs/[id]/download` | Télécharge la livraison ZIP (état SEALED requis) |
 | `GET / POST supremacy` | **R8** — catalogue + 12 capacités de souveraineté : preuves embarquées, Merkle, blast radius, débat, time-travel, fuzzing, self-heal, attestations |
 | `GET / POST llm` | **R10** — fabric LLM : statut fournisseurs (GET), sonde de connectivité + réordonnancement runtime (POST) |
+| `POST studio/runs/[id]/execute` | **R11** — **preuve live** : install → syntaxe → build → lancement sandbox → sondes HTTP → self-heal borné → `SEALED → LIVE_PROVED` |
 | `WS /ws/yahria` | **Flux temps réel** (WebSocket, domaine 11) — handshake `hello → snapshot → events` |
 
 ## YAHRIA Mission Control (UI)
@@ -133,6 +136,9 @@ Temps réel**. Le Studio autonome couvre le cycle complet : soumission
 d'arborescence (ou brief seul, l'architecte S2 concevant alors les fichiers),
 validation S1 en direct, progression de la machine à états alimentée par le
 journal WebSocket, navigateur de fichiers générés, éditeur IA par instruction,
+**exécution sandbox en un clic avec preuve live** (bouton « Exécuter en
+sandbox » : install, syntaxe, build, lancement réel, sondes HTTP, auto-réparation
+bornée — verdict PROVED/PARTIAL/UNPROVED affiché avec le rapport complet),
 et téléchargement du ZIP scellé. Le panneau **Souveraineté R8** auto-démontre
 en un clic les huit capacités de calibre expert (preuves embarquées, Merkle,
 blast radius, débat adversarial, time-travel, fuzzing, self-heal, attestation)
