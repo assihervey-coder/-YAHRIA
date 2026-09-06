@@ -66,6 +66,50 @@ export interface GeneratedContent {
 
 export const MAX_TREE_FILES = 48;
 
+/** Stacks sélectionnables — le choix humain gouverne sur la détection (INV-081 : l'incertitude est étiquetée). */
+export const STUDIO_STACKS = ['AUTO', 'NEXTJS', 'NODE', 'PYTHON', 'STATIC_WEB', 'GO', 'RUST', 'JAVA'] as const;
+export type StudioStack = (typeof STUDIO_STACKS)[number];
+
+export const STACK_LABELS: Record<string, string> = {
+  AUTO: 'Détection automatique',
+  NEXTJS: 'Next.js / React (site web ou app)',
+  NODE: 'Node.js (Express / API / CLI)',
+  PYTHON: 'Python (FastAPI / Flask / CLI)',
+  STATIC_WEB: 'Site web statique (HTML/CSS/JS)',
+  GO: 'Go (service / CLI)',
+  RUST: 'Rust (binaire / service)',
+  JAVA: 'Java (Spring / Maven / Gradle)',
+};
+
+export const STACK_HINTS: Record<string, string> = {
+  NEXTJS: 'App Router, pages sous src/app/, next.config.mjs, package.json avec next/react — site web réel rendu côté serveur',
+  NODE: 'serveur HTTP Express minimal sans build, package.json avec start script',
+  PYTHON: 'bibliothèque standard + FastAPI/Flask si nécessaire, requirements.txt, point d\'entrée __main__.py ou app.py',
+  STATIC_WEB: 'HTML/CSS/JS vanilla ouvrables directement dans un navigateur, aucun outil de build',
+  GO: 'go.mod, main.go, package unique, tests _test.go',
+  RUST: 'Cargo.toml, src/main.rs, modules src/',
+  JAVA: 'pom.xml ou build.gradle, src/main/java, classe Main',
+};
+
+/**
+ * Enforcement S1 du choix de langage humain — INV-081/INV-210 :
+ * la détection reste exécutée mais n'est JAMAIS autoritaire face à l'intention explicite.
+ * Une divergence est étiquetée (warning) et le choix humain l'emporte.
+ */
+export function enforceStackChoice(tree: ParsedTree, requestedStack: string): ParsedTree {
+  if (!requestedStack || requestedStack === 'AUTO') return tree;
+  if (tree.files.length === 0) return tree;
+  if (tree.stack === requestedStack) {
+    tree.warnings.unshift(`langage imposé ${requestedStack} : confirmé par la détection S1`);
+    return tree;
+  }
+  tree.warnings.unshift(
+    `langage imposé ${requestedStack} : la détection S1 a trouvé ${tree.stack} — le choix humain gouverne (INV-081), blueprint et coder agents contraints à ${requestedStack}`,
+  );
+  tree.stack = requestedStack;
+  return tree;
+}
+
 // ── ST-2. PERCEPTION S1 — PARSING & NORMALISATION DE L'ARBORESCENCE ─
 
 const JUNK_PREFIXES = [
@@ -124,7 +168,23 @@ function flattenTreeObject(obj: Record<string, unknown>, prefix = ''): string[] 
   return out;
 }
 
-/** S1 — parse une arborescence soumise : glyphes `tree`, chemins simples, ou JSON. */
+/**
+ * Profondeur d'une ligne d'arborescence : nombre d'unités de 4 caractères en tête
+ * (`├── `, `└── `, `│   `, `    `) — 0 si la ligne commence directement par du contenu.
+ */
+function treeLineDepth(line: string): number {
+  const m = line.match(/^[\s│|├└─]*/);
+  const prefix = m ? m[0] : '';
+  if (!prefix || prefix.length === 0) return 0;
+  const hasGlyph = /[│|├└─]/.test(prefix);
+  if (!hasGlyph) {
+    // indentation pure (arbre dessiné aux espaces) : 1 niveau / 2 espaces
+    return Math.max(1, Math.ceil(prefix.length / 2));
+  }
+  return Math.max(1, Math.round(prefix.length / 4));
+}
+
+/** S1 — parse une arborescence soumise : glyphes `tree` (avec hiérarchie), chemins simples, ou JSON. */
 export function parseTreeSpec(raw: string, aiDesigned = false): ParsedTree {
   const warnings: string[] = [];
   const rejections: { path: string; reason: string }[] = [];
@@ -151,7 +211,12 @@ export function parseTreeSpec(raw: string, aiDesigned = false): ParsedTree {
     candidates.push(...trimmed.split(/\r?\n/));
   }
 
+  // Reconstruction hiérarchique : les lignes à glyphes `tree` héritent du répertoire parent
+  // (ex : `src/app/` puis `├── page.tsx` → src/app/page.tsx). Sans glyphes : chemin intégral (comportement historique).
+  const dirStack: { depth: number; path: string }[] = [];
+
   for (const c of candidates) {
+    const depth = treeLineDepth(c);
     const cleaned = cleanTreeLine(c);
     if (!cleaned) continue;
     const norm = normalizePath(cleaned);
@@ -160,8 +225,23 @@ export function parseTreeSpec(raw: string, aiDesigned = false): ParsedTree {
       else if (norm.reason) warnings.push(`${cleaned.slice(0, 40)} → ${norm.reason}`);
       continue;
     }
-    if (!isFileEntry(norm.path)) { warnings.push(`répertoire ignoré : ${norm.path}`); continue; }
-    if (!files.has(norm.path)) files.set(norm.path, { path: norm.path, role: classifyRole(norm.path) });
+    const isDirectory = cleaned.endsWith('/') || !isFileEntry(norm.path);
+    if (isDirectory) {
+      while (dirStack.length > 0 && dirStack[dirStack.length - 1].depth >= depth) dirStack.pop();
+      const parent = dirStack.length > 0 ? `${dirStack[dirStack.length - 1].path}/` : '';
+      dirStack.push({ depth, path: `${parent}${norm.path}` });
+      continue;
+    }
+    let fullPath = norm.path;
+    if (depth > 0 && dirStack.length > 0) {
+      let k = dirStack.length - 1;
+      while (k >= 0 && dirStack[k].depth >= depth) k--;
+      if (k >= 0) {
+        const prefix = dirStack[k].path;
+        if (!fullPath.startsWith(`${prefix}/`)) fullPath = `${prefix}/${fullPath}`;
+      }
+    }
+    if (!files.has(fullPath)) files.set(fullPath, { path: fullPath, role: classifyRole(fullPath) });
   }
 
   const list = Array.from(files.values());
@@ -206,6 +286,23 @@ export function classifyRole(p: string): FileRole {
 
 // ── ST-4. COUCHE LLM (S2) — SDK avec fallback explicite (INV-210) ──
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Backoff anti-429 : nouvelle tentative différée quand le SDK rate-limit (3 essais : 4 s, 12 s, 30 s). */
+async function callLLMWithBackoff(system: string, user: string): Promise<string> {
+  const backoffs = [4000, 12000, 30000];
+  for (let i = 0; ; i++) {
+    try {
+      return await callLLM(system, user);
+    } catch (e) {
+      const msg = (e as Error).message ?? '';
+      const rateLimited = /429|too many requests/i.test(msg);
+      if (!rateLimited || i >= backoffs.length) throw e;
+      await sleep(backoffs[i]);
+    }
+  }
+}
+
 async function callLLM(system: string, user: string): Promise<string> {
   const { default: ZAI } = await import('z-ai-web-dev-sdk');
   const zai = await ZAI.create();
@@ -234,12 +331,16 @@ export function extractJson(raw: string): unknown | null {
 
 // ── ST-5. ARBORESCENCE CONÇUE PAR L'IA (mode autonome total) ───────
 
-export async function proposeTree(brief: string): Promise<ParsedTree> {
+export async function proposeTree(brief: string, forcedStack?: string): Promise<ParsedTree> {
+  const stackRule = forcedStack && forcedStack !== 'AUTO'
+    ? `- MANDATORY: the stack is ${forcedStack}. Every file, config and dependency MUST belong to this stack (${STACK_HINTS[forcedStack] ?? forcedStack}).`
+    : `- Choose the single best stack for the brief among NEXTJS, NODE, PYTHON, STATIC_WEB, GO, RUST, JAVA.`;
   try {
-    const raw = await callLLM(
+    const raw = await callLLMWithBackoff(
       `You are YAHRIA's architect agent. Design the MINIMAL viable file tree for a complete, runnable application.
 Rules:
 - STRICT JSON only: {"stack": "NEXTJS|NODE|PYTHON|STATIC_WEB|GO|RUST|JAVA", "files": [{"path": "relative/path.ext", "purpose": "one line"}]}
+${stackRule}
 - Maximum 16 files. Every file must be essential to run the application.
 - NEVER include node_modules, dist, build, .git, lock files, or binary assets.
 - Include exactly the config files the stack needs (package.json / requirements.txt / ...).
@@ -257,15 +358,28 @@ Rules:
       }
     }
     // LLM a répondu mais inexploitable → fallback heuristique étiqueté (INV-081)
-    const fallback = ['package.json', 'README.md', 'src/index.ts'];
-    const tree = parseTreeSpec(fallback.join('\n'), true);
+    const tree = parseTreeSpec(minimalTreeFor(forcedStack).join('\n'), true);
+    if (forcedStack && forcedStack !== 'AUTO') tree.stack = forcedStack;
     tree.warnings.unshift('S2 inexploitable → arborescence heuristique minimale (UNVERIFIED, INV-081)');
     return tree;
   } catch {
-    const fallback = ['package.json', 'README.md', 'src/index.ts'];
-    const tree = parseTreeSpec(fallback.join('\n'), true);
+    const tree = parseTreeSpec(minimalTreeFor(forcedStack).join('\n'), true);
+    if (forcedStack && forcedStack !== 'AUTO') tree.stack = forcedStack;
     tree.warnings.unshift('modèle S2 indisponible → arborescence heuristique minimale (UNVERIFIED, INV-081)');
     return tree;
+  }
+}
+
+/** Arborescence minimale par stack pour le fallback déterministe (INV-081). */
+function minimalTreeFor(stack?: string): string[] {
+  switch (stack) {
+    case 'PYTHON': return ['requirements.txt', 'README.md', 'app.py'];
+    case 'STATIC_WEB': return ['index.html', 'css/style.css', 'js/main.js', 'README.md'];
+    case 'GO': return ['go.mod', 'main.go', 'README.md'];
+    case 'RUST': return ['Cargo.toml', 'src/main.rs', 'README.md'];
+    case 'JAVA': return ['pom.xml', 'src/main/java/com/yahria/Main.java', 'README.md'];
+    case 'NEXTJS': return ['package.json', 'next.config.mjs', 'src/app/layout.tsx', 'src/app/page.tsx', 'README.md'];
+    default: return ['package.json', 'README.md', 'src/index.js'];
   }
 }
 
@@ -278,13 +392,14 @@ const ROLE_RANK: Record<FileRole, number> = {
 export async function planBlueprint(brief: string, tree: ParsedTree): Promise<{ blueprint: BlueprintEntry[]; modelUsed: string }> {
   const fileList = tree.files.map((f) => `- ${f.path} (${f.role})`).join('\n');
   try {
-    const raw = await callLLM(
+    const raw = await callLLMWithBackoff(
       `You are YAHRIA's planner agent. Produce an implementation blueprint for each file of a fixed file tree.
 Rules:
 - STRICT JSON only: {"plans": [{"path": "...", "purpose": "one line", "depends_on": ["other paths"], "key_points": ["3-6 concrete implementation requirements"]}]}
 - Cover EVERY file in the tree exactly once, same paths, no invented paths.
 - depends_on lists files that must exist before this one (imports/config). Empty array if none.
-- key_points must be specific (functions, routes, exports, schemas) — not generic advice.`,
+- key_points must be specific (functions, routes, exports, schemas) — not generic advice.
+- The stack is AUTHORITATIVE: every plan must fit ${tree.stack} idioms and tooling${tree.stack === 'NEXTJS' ? ' (App Router — src/app/ structure)' : tree.stack === 'STATIC_WEB' ? ' (plain HTML/CSS/JS, no build step)' : tree.stack === 'PYTHON' ? ' (stdlib-first, requirements.txt)' : ''}.`,
       `STACK: ${tree.stack}
 MISSION BRIEF:
 ${brief.slice(0, 1800)}
@@ -367,8 +482,12 @@ const PLACEHOLDER_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /^\s*\.\.\.\s*$/m, label: 'ligne "..." (corps absent)' },
   { re: /(\.\.\.)\s*(rest|remaining|le reste)/i, label: 'ellipsis "rest of the code"' },
   { re: /(your code here|implementation (here|goes)|à compléter|code ici)/i, label: 'placeholder explicite' },
-  { re: /<\s*(implementation|rest|body|logic)\s*>/i, label: 'balise placeholder' },
+  // NB: `body` exclu — balise HTML légitime ; pattern réservé aux balises-placeholder réelles
+  { re: /<\s*(implementation|rest|logic|todo)\s*>/i, label: 'balise placeholder' },
 ];
+
+/** Extensions markup où les balises standard rendent le pattern 4 non fiable (faux positif `<body>`). */
+const MARKUP_EXTS = ['html', 'htm', 'xml', 'svg', 'vue'];
 
 const MAX_FILE_BYTES = 32 * 1024;
 
@@ -377,11 +496,15 @@ export function verifyGeneratedContent(content: string, filePath: string): { ok:
   const c = stripFences(content);
   if (c.trim().length < 25) return { ok: false, note: 'contenu vide ou trop court (<25 chars)' };
   if (c.length > MAX_FILE_BYTES) return { ok: false, note: `contenu trop volumineux (${c.length} > ${MAX_FILE_BYTES} octets)` };
-  for (const { re, label } of PLACEHOLDER_PATTERNS.slice(0, 4)) {
+  for (const { re, label } of PLACEHOLDER_PATTERNS.slice(0, 3)) {
     if (re.test(c)) return { ok: false, note: `placeholder détecté : ${label} (INV-080)` };
   }
   const base = filePath.split('/').pop() ?? filePath;
   const ext = base.includes('.') ? base.split('.').pop()!.toLowerCase() : '';
+  if (!MARKUP_EXTS.includes(ext)) {
+    const tagPattern = PLACEHOLDER_PATTERNS[3].re;
+    if (tagPattern.test(c)) return { ok: false, note: `placeholder détecté : balise placeholder (INV-080)` };
+  }
   if (ext === 'json') {
     try { JSON.parse(c); } catch (e) { return { ok: false, note: `JSON invalide : ${(e as Error).message.slice(0, 120)}` }; }
   }
@@ -432,7 +555,7 @@ STRICT OUTPUT RULES:
       const corrective = i === 0
         ? ''
         : `\n\nCORRECTIVE NOTICE — your previous attempt failed verification: ${lastNote}. Fix this specific problem and output the full corrected file.`;
-      const raw = await callLLM(
+      const raw = await callLLMWithBackoff(
         system,
         `STACK: ${ctx.stack}
 MISSION BRIEF:

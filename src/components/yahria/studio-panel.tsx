@@ -14,6 +14,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Code2, Globe, TerminalSquare } from 'lucide-react';
 import type { YahriaEvent } from '@/lib/yahria/realtime';
 import {
   Bot, CheckCircle2, Clock, Download, FileCode2, FileSearch2,
@@ -21,6 +23,18 @@ import {
 } from 'lucide-react';
 
 // ── Types locaux ─────────────────────────────────────────────────
+
+/** Choix de langage — miroir client de STUDIO_STACKS (le choix humain gouverne, INV-081). */
+const STACK_CHOICES: { value: string; label: string }[] = [
+  { value: 'AUTO', label: 'Détection automatique' },
+  { value: 'NEXTJS', label: 'Next.js / React — site web' },
+  { value: 'NODE', label: 'Node.js — Express / API / CLI' },
+  { value: 'PYTHON', label: 'Python — FastAPI / Flask / CLI' },
+  { value: 'STATIC_WEB', label: 'HTML/CSS/JS — site statique' },
+  { value: 'GO', label: 'Go — service / CLI' },
+  { value: 'RUST', label: 'Rust — binaire / service' },
+  { value: 'JAVA', label: 'Java — Spring / Maven' },
+];
 
 interface ParsedTree {
   stack: string;
@@ -37,14 +51,14 @@ interface GenFile {
 }
 
 interface RunDetail {
-  id: string; runUid: string; name: string; brief: string; stack: string; state: string;
+  id: string; runUid: string; name: string; brief: string; stack: string; requestedStack?: string; state: string;
   aiDesignedTree: boolean; stats: string; error: string | null; traceId: string | null;
   files: GenFile[];
   createdAt: string;
 }
 
 interface RunSummary {
-  id: string; runUid: string; name: string; stack: string; state: string;
+  id: string; runUid: string; name: string; stack: string; requestedStack?: string; state: string;
   stats: string; error: string | null; createdAt: string; _count: { files: number };
 }
 
@@ -52,9 +66,49 @@ interface StatsShape { files?: number; generated?: number; failed?: number; retr
 
 // ── Templates de mission ─────────────────────────────────────────
 
-const TEMPLATES: { label: string; name: string; brief: string; tree: string }[] = [
+const TEMPLATES: { label: string; stack: string; name: string; brief: string; tree: string }[] = [
+  {
+    label: 'Site web Next.js',
+    stack: 'NEXTJS',
+    name: 'Site vitrine Next.js — agence de voyage',
+    brief: 'Site web vitrine Next.js (App Router) pour une agence de voyage : page d\'accueil avec hero et destinations populaires, page destinations avec cartes filtrables, page contact avec formulaire, navigation responsive, design moderne avec Tailwind CSS. Prêt à lancer avec npm install && npm run dev.',
+    tree: `package.json
+next.config.mjs
+tailwind.config.ts
+postcss.config.mjs
+src/app/
+├── layout.tsx
+├── page.tsx
+├── globals.css
+├── destinations/page.tsx
+└── contact/page.tsx
+src/components/
+├── navbar.tsx
+├── destination-card.tsx
+└── contact-form.tsx
+README.md`,
+  },
+  {
+    label: 'API FastAPI (Python)',
+    stack: 'PYTHON',
+    name: 'API bibliothèque FastAPI',
+    brief: 'API REST FastAPI de gestion de bibliothèque : CRUD livres et emprunts, validation Pydantic, persistance SQLite, documentation OpenAPI automatique, endpoint de santé. Prête à lancer avec uvicorn.',
+    tree: `requirements.txt
+app/
+├── __init__.py
+├── main.py
+├── database.py
+├── models.py
+├── schemas.py
+└── routers/
+    ├── books.py
+    └── loans.py
+tests/test_api.py
+README.md`,
+  },
   {
     label: 'API de tâches (Node/Express)',
+    stack: 'NODE',
     name: 'API de gestion de tâches',
     brief: 'API REST de gestion de tâches : CRUD complet, validation des entrées, persistance fichier JSON, gestion des erreurs, endpoint de santé. Code commenté et prêt à exécuter avec npm start.',
     tree: `package.json
@@ -70,6 +124,7 @@ README.md`,
   },
   {
     label: 'Analyseur de texte (Python)',
+    stack: 'PYTHON',
     name: 'Analyseur de texte CLI',
     brief: 'Outil CLI Python qui analyse un fichier texte : nombre de mots, fréquence des termes, lectureibilité approximative, export du rapport en JSON. Utilise uniquement la bibliothèque standard.',
     tree: `pyproject.toml
@@ -84,6 +139,7 @@ tests/test_analysis.py`,
   },
   {
     label: 'Site vitrine statique',
+    stack: 'STATIC_WEB',
     name: 'Site vitrine boulangerie',
     brief: 'Site vitrine statique pour une boulangerie artisanale : accueil avec hero, section produits avec cartes, section horaires et contact, formulaire de contact stylé, design responsive et moderne.',
     tree: `index.html
@@ -129,6 +185,7 @@ export function StudioPanel({ events }: { events: YahriaEvent[] }) {
   const [name, setName] = useState('');
   const [brief, setBrief] = useState('');
   const [treeSpec, setTreeSpec] = useState('');
+  const [stack, setStack] = useState('AUTO');
   const [aiDesigned, setAiDesigned] = useState(false);
   const [preview, setPreview] = useState<ParsedTree | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -207,7 +264,7 @@ export function StudioPanel({ events }: { events: YahriaEvent[] }) {
     try {
       const res = await fetch('/api/yahria/studio/runs', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, brief, treeSpec, aiDesignedTree: aiDesigned }),
+        body: JSON.stringify({ name, brief, treeSpec, aiDesignedTree: aiDesigned, requestedStack: stack }),
       });
       const json = await res.json();
       if (!json.ok) { setFormError(json.error); return; }
@@ -269,6 +326,23 @@ export function StudioPanel({ events }: { events: YahriaEvent[] }) {
                 placeholder="ex : API de gestion de tâches" className="bg-slate-950 border-slate-800 text-sm" />
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="studio-stack" className="text-xs text-slate-400 flex items-center gap-1.5">
+                <Code2 className="h-3 w-3 text-teal-300" /> Langage / Stack — votre choix gouverne la génération
+              </Label>
+              <Select value={stack} onValueChange={setStack}>
+                <SelectTrigger id="studio-stack" className="bg-slate-950 border-slate-800 text-sm">
+                  <SelectValue placeholder="Choisir le langage" />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-950 border-slate-800">
+                  {STACK_CHOICES.map((s) => (
+                    <SelectItem key={s.value} value={s.value} className="text-sm text-slate-200">
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="studio-brief" className="text-xs text-slate-400">Brief de mission — ce que l’application doit faire</Label>
               <Textarea id="studio-brief" value={brief} onChange={(e) => setBrief(e.target.value)} rows={4}
                 placeholder="Décrire les fonctionnalités attendues, la stack, les contraintes…"
@@ -296,7 +370,11 @@ export function StudioPanel({ events }: { events: YahriaEvent[] }) {
                   {TEMPLATES.map((t) => (
                     <Button key={t.label} type="button" variant="outline" size="sm"
                       className="h-7 text-[10.5px] border-slate-700 text-slate-300 hover:bg-slate-800"
-                      onClick={() => { setName(t.name); setBrief(t.brief); setTreeSpec(t.tree); setPreview(null); }}>
+                      onClick={() => { setName(t.name); setBrief(t.brief); setTreeSpec(t.tree); setStack(t.stack); setPreview(null); }}>
+                      {t.label === 'Site web Next.js' ? <Globe className="h-3 w-3 mr-1" />
+                        : t.label === 'API FastAPI (Python)' ? <TerminalSquare className="h-3 w-3 mr-1" />
+                        : t.label === 'Site vitrine statique' ? <Globe className="h-3 w-3 mr-1" />
+                        : <FileCode2 className="h-3 w-3 mr-1" />}
                       {t.label}
                     </Button>
                   ))}
@@ -373,7 +451,7 @@ export function StudioPanel({ events }: { events: YahriaEvent[] }) {
                         <Badge className={`text-[9.5px] ${stateBadge(r.state)}`}>{r.state}</Badge>
                       </div>
                       <div className="text-[10px] text-slate-500 font-mono mt-0.5">
-                        {r.runUid} · {r.stack} · {r._count.files} fichiers · {new Date(r.createdAt).toLocaleTimeString('fr-FR')}
+                        {r.runUid} · {r.stack}{r.requestedStack && r.requestedStack !== 'AUTO' ? ` (imposé : ${r.requestedStack})` : ''} · {r._count.files} fichiers · {new Date(r.createdAt).toLocaleTimeString('fr-FR')}
                       </div>
                     </button>
                   ))}

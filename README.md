@@ -27,6 +27,17 @@ traçable et prouvée*. Ce dépôt contient :
    l'agent coder génère chaque fichier, la vérification indépendante contrôle,
    et la mission est **scellée par des preuves** puis livrée en ZIP + éditeur IA
    de régénération fichier par fichier.
+   - **Langage au choix** : sélecteur de stack (Next.js, Node.js, Python,
+     HTML/CSS/JS statique, Go, Rust, Java) — le choix humain gouverne sur la
+     détection S1 (INV-081) ; parsing hiérarchique des glyphes `tree`
+     (`src/app/` + `├── page.tsx` → `src/app/page.tsx`).
+   - **Résilience S2** : backoff anti rate-limit (429), pacing inter-fichiers,
+     retries correctifs ; le vérificateur INV-080 distingue placeholders réels
+     et balises markup légitimes (`<body>`).
+   - **Prouvé en réel** : site Next.js généré (14 fichiers) compilé en build de
+     production (routes `/`, `/destinations`, `/contact` en 200) ; API FastAPI
+     générée exécutée avec uvicorn (`/health`, `/forecast` 7 jours, `/docs`
+     OpenAPI) ; site statique livré avec lightbox et formulaire fonctionnels.
 4. **Le corpus constitutionnel original** (`docs/corpus/`) — les 11 documents
    fondateurs, y compris les 2 fichiers racine manquants désormais restaurés
    (`CANONICAL_INDEX.md`, `DEPENDENCY_GRAPH.md`).

@@ -20,7 +20,7 @@ import { captureAndPersist } from './evidence-store';
 import { emitYahriaEvent, REALTIME_EVENT_TYPES } from './realtime';
 import {
   parseTreeSpec, proposeTree, planBlueprint, generateFileContent, classifyRole,
-  STUDIO_RUN_TRANSITIONS, orderBlueprint,
+  STUDIO_RUN_TRANSITIONS, orderBlueprint, enforceStackChoice,
   type BlueprintEntry, type ParsedTree, type StudioRunState,
 } from './studio';
 
@@ -133,22 +133,24 @@ async function runStudioPipeline(runId: string): Promise<void> {
       return;
     }
 
-    // ── PERCEIVED — S1 perception de l'arborescence ──────────────────
+    // ── PERCEIVED — S1 perception de l'arborescence (choix de langage humain gouverne, INV-081) ──
+    const requestedStack = run.requestedStack ?? 'AUTO';
     let tree: ParsedTree;
     if (run.aiDesignedTree) {
       await transitionRun(runId, runUid, 'SUBMITTED', 'PERCEIVED');
-      tree = await proposeTree(run.brief);
+      tree = await proposeTree(run.brief, requestedStack);
     } else {
       tree = parseTreeSpec(run.treeSpec);
       await transitionRun(runId, runUid, 'SUBMITTED', 'PERCEIVED');
     }
+    tree = enforceStackChoice(tree, requestedStack);
     await db.generationRun.update({
       where: { id: runId },
       data: { stack: tree.stack, treeSpec: tree.files.map((f) => f.path).join('\n'), aiDesignedTree: tree.aiDesigned },
     });
     emit(STUDIO_EVENTS.TREE_PARSED, tree.files.length > 0 ? 'INFO' : 'WARN',
-      `Studio ${runUid} : arborescence perçue — ${tree.files.length} fichiers, stack ${tree.stack}`, runUid,
-      { files: tree.files.length, stack: tree.stack, warnings: tree.warnings, rejections: tree.rejections.slice(0, 10) });
+      `Studio ${runUid} : arborescence perçue — ${tree.files.length} fichiers, langage ${tree.stack}${requestedStack !== 'AUTO' ? ' (imposé par l\'opérateur)' : ''}`, runUid,
+      { files: tree.files.length, stack: tree.stack, requestedStack, warnings: tree.warnings, rejections: tree.rejections.slice(0, 10) });
 
     if (tree.files.length === 0) {
       await failRun(runId, runUid, 'arborescence vide ou entièrement invalide (INV-120/210)');
@@ -183,6 +185,8 @@ async function runStudioPipeline(runId: string): Promise<void> {
     for (const entry of blueprint) {
       const fileRow = await db.generatedFile.findFirst({ where: { runId, path: entry.path } });
       if (!fileRow) continue;
+      // pacing anti-rafale : espacer les appels S2 pour rester sous le rate-limit (429)
+      if (generated + failed > 0) await new Promise((r) => setTimeout(r, 700));
       emit(STUDIO_EVENTS.FILE_GENERATING, 'INFO', `Studio ${runUid} : génération de ${entry.path}`, runUid, { path: entry.path });
       await db.generatedFile.update({ where: { id: fileRow.id }, data: { state: 'GENERATING' } });
 

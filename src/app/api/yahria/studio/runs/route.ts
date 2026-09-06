@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { ensureBootstrapped } from '@/lib/yahria/bootstrap';
 import { startStudioRun } from '@/lib/yahria/studio-pipeline';
 import { emitYahriaEvent, REALTIME_EVENT_TYPES } from '@/lib/yahria/realtime';
+import { STUDIO_STACKS } from '@/lib/yahria/studio';
 
 export async function GET() {
   try {
@@ -11,7 +12,7 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
       take: 30,
       select: {
-        id: true, runUid: true, name: true, brief: true, stack: true, state: true,
+        id: true, runUid: true, name: true, brief: true, stack: true, requestedStack: true, state: true,
         aiDesignedTree: true, stats: true, error: true, traceId: true,
         createdAt: true, updatedAt: true,
         _count: { select: { files: true } },
@@ -31,6 +32,10 @@ export async function POST(req: Request) {
     const brief = String(body.brief ?? '').trim();
     const treeSpec = String(body.treeSpec ?? '').trim();
     const aiDesignedTree = Boolean(body.aiDesignedTree);
+    const requestedStackRaw = String(body.requestedStack ?? 'AUTO').trim().toUpperCase() || 'AUTO';
+    if (!(STUDIO_STACKS as readonly string[]).includes(requestedStackRaw)) {
+      return NextResponse.json({ ok: false, error: `langage inconnu : ${requestedStackRaw} (autorisés : ${STUDIO_STACKS.join(', ')})` }, { status: 422 });
+    }
 
     if (!name) return NextResponse.json({ ok: false, error: 'nom de mission requis' }, { status: 400 });
     if (brief.length < 10) return NextResponse.json({ ok: false, error: 'brief trop court (min. 10 caractères)' }, { status: 400 });
@@ -38,7 +43,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'arborescence requise (ou activer « l\'IA conçoit l\'arborescence »)' }, { status: 400 });
     }
 
-    // runUid séquentiel RUN-000001 — retry sur collision unique
+    // runUid séquentiel RUN-000001 — retry uniquement sur vraie collision unique (P2002)
     let run = null;
     for (let attempt = 0; attempt < 3 && !run; attempt++) {
       const count = await db.generationRun.count();
@@ -47,18 +52,25 @@ export async function POST(req: Request) {
         run = await db.generationRun.create({
           data: {
             runUid, name: name.slice(0, 120), brief: brief.slice(0, 4000), treeSpec: treeSpec.slice(0, 8000),
-            aiDesignedTree, state: 'SUBMITTED',
+            aiDesignedTree, requestedStack: requestedStackRaw, state: 'SUBMITTED',
             traceId: `TRACE-STUDIO-${runUid}`,
           },
         });
-      } catch { /* collision runUid → retry */ }
+      } catch (e) {
+        const code = (e as { code?: string }).code;
+        if (code !== 'P2002') {
+          console.error('[studio/runs] create failed:', e);
+          return NextResponse.json({ ok: false, error: `création du run impossible : ${String((e as Error).message ?? e).slice(0, 300)}` }, { status: 500 });
+        }
+        /* vraie collision runUid → retry */
+      }
     }
     if (!run) return NextResponse.json({ ok: false, error: 'création du run impossible (collision runUid)' }, { status: 500 });
 
     emitYahriaEvent({
       type: REALTIME_EVENT_TYPES.TASK_CREATED, source: '03', severity: 'INFO',
-      message: `Studio : mission « ${name} » soumise (${run.runUid})`,
-      payload: { runUid: run.runUid, name, aiDesigned: aiDesignedTree, kind: 'STUDIO_RUN' },
+      message: `Studio : mission « ${name} » soumise (${run.runUid}) — langage ${requestedStackRaw}`,
+      payload: { runUid: run.runUid, name, aiDesigned: aiDesignedTree, requestedStack: requestedStackRaw, kind: 'STUDIO_RUN' },
     });
 
     // pipeline en arrière-plan (custom server Node — la promesse survit à la réponse)

@@ -245,6 +245,7 @@ model GenerationRun {
   brief         String   // mission brief — what the generated application must do
   treeSpec      String   @default("") // submitted arborescence (raw text, may be empty if AI-designed)
   stack         String   @default("UNKNOWN") // NEXTJS | NODE | PYTHON | STATIC_WEB | GO | RUST | JAVA | UNKNOWN
+  requestedStack String  @default("AUTO") // langage imposé par l'utilisateur (AUTO = détection S1) — l'intention humaine gouverne (INV-081)
   state         String   @default("SUBMITTED") // SUBMITTED|PERCEIVED|PLANNED|GENERATING|VERIFYING|SEALED|FAILED|CANCELLED (guarded)
   aiDesignedTree Boolean @default(false) // true = S2 designed the arborescence from the brief
   blueprint     String?  // JSON: [{path, purpose, dependsOn, keyPoints, order}]
