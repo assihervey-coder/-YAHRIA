@@ -60,3 +60,8 @@ server.log
 /Caddyfile
 /db/
 *.db
+
+# Intermediaires de build du rapport PDF
+/scripts/report_body.pdf
+/scripts/report_cover.pdf
+/scripts/report_chart_dims.png

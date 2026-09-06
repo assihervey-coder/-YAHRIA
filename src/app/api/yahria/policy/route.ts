@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { ensureBootstrapped } from '@/lib/yahria/bootstrap';
 import { evaluatePolicy, SEED_POLICY_RULES } from '@/lib/yahria/policy-engine';
 import type { PolicyRequest } from '@/lib/yahria/types';
+import { emitYahriaEvent, REALTIME_EVENT_TYPES } from '@/lib/yahria/realtime';
 
 export async function GET() {
   try {
@@ -35,6 +36,12 @@ export async function POST(req: Request) {
         reason: evaluation.reason,
         decidedBy: 'POLICY_ENGINE',
       },
+    });
+    emitYahriaEvent({
+      type: REALTIME_EVENT_TYPES.POLICY_DECISION, source: '12',
+      severity: evaluation.effect === 'ALLOW' ? 'INFO' : 'WARN',
+      message: `Décision politique ${evaluation.effect} — ${request.actorType}:${request.actorId} → ${request.action} sur ${request.resource} (${evaluation.matchedRule})`,
+      payload: { decisionId: decision.id, effect: evaluation.effect, ruleId: evaluation.matchedRule, reason: evaluation.reason, action: request.action, resource: request.resource },
     });
     return NextResponse.json({ ok: true, evaluation, decisionId: decision.id });
   } catch (e) {

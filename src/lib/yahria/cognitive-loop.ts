@@ -25,7 +25,7 @@ export async function runCognitiveLoop(goal: string): Promise<CognitiveLoopResul
 
   // ── 1. PERCEPTION ────────────────────────────────────────────────
   mark('PERCEPTION', 'Assembling WorldState from repository genome, symbols, errors, tests');
-  const worldState = buildWorldState(goal);
+  const worldState = await buildWorldState(goal);
   const evPerception = await captureAndPersist({
     category: 'AGENT', criticality: 'STANDARD', actorType: 'AGENT', actorId: 'explorer',
     claim: 'WorldState assembled for cognitive loop', payload: { worldState }, traceId,

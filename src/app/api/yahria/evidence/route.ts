@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { ensureBootstrapped } from '@/lib/yahria/bootstrap';
 import { captureEvidence } from '@/lib/yahria/evidence-engine';
 import { EVIDENCE_LIFECYCLE } from '@/lib/yahria/evidence-engine';
+import { emitYahriaEvent, REALTIME_EVENT_TYPES } from '@/lib/yahria/realtime';
 
 // Mirror of evidence-engine hashing structure (INV-110 integrity recomputation)
 function hashRecord(x: { category: string; claim: string; actor: string; payload: string | null; prevHash: string | null }): string {
@@ -46,6 +47,11 @@ export async function POST(req: Request) {
           payload: rec.payload, contentHash: rec.contentHash, prevHash: rec.prevHash,
         },
       });
+      emitYahriaEvent({
+        type: REALTIME_EVENT_TYPES.EVIDENCE_CAPTURED, source: '11', severity: 'INFO',
+        message: `Preuve capturée ${rec.evidenceUid} (${rec.category}) — ${String(claim).slice(0, 80)}`,
+        payload: { evidenceId: created.id, evidenceUid: rec.evidenceUid, category: rec.category, state: rec.state, hash: rec.contentHash.slice(0, 12) },
+      });
       return NextResponse.json({ ok: true, evidence: created });
     }
 
@@ -66,6 +72,11 @@ export async function POST(req: Request) {
       });
       if (recomputed !== record.contentHash) {
         const corrupted = await db.evidence.update({ where: { id }, data: { state: 'CORRUPTED' } });
+        emitYahriaEvent({
+          type: REALTIME_EVENT_TYPES.EVIDENCE_CORRUPTED, source: '11', severity: 'CRITICAL',
+          message: `ÉCHEC D'INTÉGRITÉ — ${record.evidenceUid} : hash recomputé différent → CORRUPTED (INV-110)`,
+          payload: { evidenceId: id, evidenceUid: record.evidenceUid, expected: (record.contentHash ?? '').slice(0, 12), recomputed: recomputed.slice(0, 12) },
+        });
         return NextResponse.json({ ok: true, evidence: corrupted, verdict: { ok: false, reason: 'INTEGRITY FAILURE : hash recomputé différent — preuve CORRUPTED (INV-110)' } });
       }
 
@@ -84,6 +95,14 @@ export async function POST(req: Request) {
           message: `${record.evidenceUid}: intégrité vérifiée → ${newState}`,
           correlationId: record.evidenceUid,
         },
+      });
+      emitYahriaEvent({
+        type: action === 'seal' ? REALTIME_EVENT_TYPES.EVIDENCE_SEALED : REALTIME_EVENT_TYPES.EVIDENCE_VERIFIED,
+        source: '11', severity: 'SUCCESS',
+        message: action === 'seal'
+          ? `Preuve scellée ${record.evidenceUid} → SEALED (immutabilité engagée, INV-033)`
+          : `Preuve vérifiée ${record.evidenceUid} → VERIFIED (hash SHA-256 conforme)`,
+        payload: { evidenceId: id, evidenceUid: record.evidenceUid, state: newState, action },
       });
       return NextResponse.json({
         ok: true, evidence: updated,

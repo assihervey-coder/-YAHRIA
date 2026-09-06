@@ -60,8 +60,8 @@ type SystemData = {
   tasks: unknown[];
   executions: unknown[];
   failures: unknown[];
-  traces: unknown[];
-  memories: unknown[];
+  traces?: unknown[];
+  memories?: unknown[];
   bootstrapSequence: { step: string; doc?: string; action?: string }[];
   governance: Record<string, { name: string; role: string }>;
 };
