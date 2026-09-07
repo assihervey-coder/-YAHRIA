@@ -66,7 +66,26 @@ export async function bootstrap(): Promise<{ seeded: boolean; counts: Record<str
         active: true,
       })),
     });
+  } else {
+    // Idempotent seed catch-up: new canonical rules (e.g. POL-011/012, D.09)
+    // join an already-seeded DB without ever overwriting governed mutations
+    // (an existing rule keeps its state; only missing ruleIds are created).
+    for (const r of SEED_POLICY_RULES) {
+      await db.policyRule.upsert({
+        where: { ruleId: r.ruleId },
+        create: {
+          ruleId: r.ruleId, name: r.name, effect: r.effect, scope: r.scope,
+          condition: JSON.stringify({ action: r.action, resource: r.resource }),
+          priority: r.priority, version: r.version, active: true,
+        },
+        update: {}, // never mutate an existing governed rule here
+      });
+    }
   }
+
+  // D.09 — Tool Registry: built-in tools are seeded/refreshed idempotently
+  const { syncBuiltInTools } = await import('./tool-registry');
+  await syncBuiltInTools();
 
   // Default tenant/organization/project hierarchy (INV-020/021/022)
   const tenantCount = await db.tenant.count();

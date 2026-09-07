@@ -101,4 +101,9 @@ export const REALTIME_EVENT_TYPES = {
   STUDIO_FILE_EDITED: 'studio.file.edited',
   STUDIO_RUN_SEALED: 'studio.run.sealed',
   STUDIO_RUN_FAILED: 'studio.run.failed',
+  // Tool Registry Engine (Domain 09 — INV-062 REGISTERED ≠ AUTHORIZED)
+  TOOL_REGISTERED: 'tool.registered',
+  TOOL_INVOKED: 'tool.invoked',
+  TOOL_DENIED: 'tool.denied',
+  TOOL_AUTHORIZED: 'tool.authorized',
 } as const;

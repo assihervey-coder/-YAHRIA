@@ -63,6 +63,17 @@ export const DOMAIN_ACTIVATIONS: DomainActivation[] = [
     ],
   },
   {
+    code: '09',
+    since: '2026-09-07',
+    evidence: [
+      'tool-registry.ts (YAHRIA-KRN-025) — registre versionné (semver monotone, downgrades refusés INV-190), contrats JSON stricts validés S1 (champs non déclarés rejetés)',
+      'Grille d\u2019autorisation vivante (INV-062) : POL-011 ALLOW readonly.*, POL-012 DENY sideeffect.*, POL-006 REQUIRE_APPROVAL unregistered.* ; autorisations gouvernées POL-AUTH-* révocables',
+      'tool-executor.ts (YAHRIA-KRN-026) — exécuteur borné outils (INV-042 timeout, INV-213 env scrubé, argv whitelisté uniquement)',
+      'Suite de preuves scripts/r12-tool-registry-tests.ts : 22/22 PASS — refus tracés (PolicyDecision), preuves TOOL scellées (chaîne SHA-256), pas de faux succès (INV-210)',
+      'API /api/yahria/tools (register/discover/invoke/authorize) + panneau UI « Registre des outils » (13e onglet) avec démonstrateur INV-062',
+    ],
+  },
+  {
     code: '10',
     since: '2026-09-07',
     evidence: [

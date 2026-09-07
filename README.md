@@ -106,6 +106,8 @@ Règles structurelles clés :
 | `llm-fabric.ts` | **R10** — **fabric LLM multi-fournisseurs** (YAHRIA-KRN-023) : route unique INV-212, repli ordonné, circuit breaker, télémétrie masquée INV-213 |
 | `sandbox-executor.ts` | **R11/R11.2** — **exécuteur sandbox** (YAHRIA-KRN-024) : recettes par stack (install/syntaxe/build/lancement/sondes HTTP **ou build+run CLI avec marqueur**), env scrubé, ports bornés, toolchains INV-190, **backend conteneur Docker durci** (INV-215 : `--network none --read-only --cap-drop ALL`) |
 | `live-proof.ts` | **R11** — boucle gouvernée self-heal : POL-009, budget borné, diagnostic fautif, réparation IA, verdicts PROVED/PARTIAL/UNPROVED |
+| `tool-registry.ts` | **R12** — **registre des outils gouvernés** (YAHRIA-KRN-025, D.09) : quatre portes (enregistrement → autorisation INV-062 → contrat S1 strict → exécution bornée), versions semver monotones INV-190, grille d'autorisation vivante POL-006/011/012, autorisations gouvernées révocables POL-AUTH-* |
+| `tool-executor.ts` | **R12** — exécuteur borné outils (YAHRIA-KRN-026) : timeout INV-042, env scrubé INV-213, argv whitelisté uniquement — jamais les internals du sandbox (§28) |
 
 ## API `/api/yahria/*`
 
@@ -125,14 +127,18 @@ Règles structurelles clés :
 | `GET studio/runs/[id]/download` | Télécharge la livraison ZIP (état SEALED requis) |
 | `GET / POST supremacy` | **R8** — catalogue + 12 capacités de souveraineté : preuves embarquées, Merkle, blast radius, débat, time-travel, fuzzing, self-heal, attestations |
 | `GET / POST llm` | **R10** — fabric LLM : statut fournisseurs (GET), sonde de connectivité + réordonnancement runtime (POST) |
+| `GET / POST tools` | **R12** — **registre des outils** (D.09) : registre + matrice d'autorisation vivante (GET) ; register / discover / invoke / authorize (POST) — chaque invocation re-évalue INV-062, chaque décision persistée (PolicyDecision) + preuve TOOL scellée |
 | `POST studio/runs/[id]/execute` | **R11/R11.2** — **preuve live** : install → syntaxe → build → lancement sandbox + sondes HTTP (stacks serveur) **ou compilation + exécution CLI avec capture du marqueur `YAHRIA-LINK-OK`** (C, C++, C#, Fortran) → self-heal borné → `SEALED → LIVE_PROVED` |
 | `WS /ws/yahria` | **Flux temps réel** (WebSocket, domaine 11) — handshake `hello → snapshot → events` |
 
 ## YAHRIA Mission Control (UI)
 
-12 panneaux : **Studio autonome · Souveraineté R8 · Connecteurs IA · Centre de commande · Raisonnement hybride ·
+13 panneaux : **Studio autonome · Souveraineté R8 · Connecteurs IA · Registre des outils · Centre de commande · Raisonnement hybride ·
 Agent OS · Graphe de tâches · Exécutions · Preuves · Politiques · Blueprint ·
-Temps réel**. Le Studio autonome couvre le cycle complet : soumission
+Temps réel**. Le panneau **Registre des outils** (R12, D.09) affiche la grille
+INV-062 vivante (REGISTERED ≠ AUTHORIZED) : formulaires générés depuis les
+contrats, démonstrateur autorisation/révocation side-effect, journal des
+invocations gouvernées. Le Studio autonome couvre le cycle complet : soumission
 d'arborescence (ou brief seul, l'architecte S2 concevant alors les fichiers),
 validation S1 en direct, progression de la machine à états alimentée par le
 journal WebSocket, navigateur de fichiers générés, éditeur IA par instruction,
@@ -248,7 +254,7 @@ du contrat 00 en fichiers racine autonomes.
 ├── src/
 │   ├── app/                    # Next.js App Router (UI + API)
 │   │   ├── api/yahria/         # 7 endpoints constitutionnels + studio (5 routes)
-│   │   └── page.tsx            # Mission Control (12 panneaux)
+│   │   └── page.tsx            # Mission Control (13 panneaux)
 │   ├── components/yahria/      # Panneaux Mission Control + Studio autonome
 │   ├── hooks/                  # use-yahria-realtime (WS)
 │   └── lib/yahria/             # ⭐ Noyau constitutionnel (15 modules + realtime)

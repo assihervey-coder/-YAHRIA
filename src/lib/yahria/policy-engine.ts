@@ -31,6 +31,8 @@ export const SEED_POLICY_RULES: PolicyRuleDef[] = [
   { ruleId: 'POL-008', name: 'Read-only inspection of workspace allowed', effect: 'ALLOW', scope: 'FILESYSTEM', action: 'filesystem.read', resource: 'workspace.snapshot', priority: 10, reason: 'Lower layer is read-only (FS-002)', version: '1.0.0' },
   { ruleId: 'POL-009', name: 'Bounded executions allowed in sandbox', effect: 'ALLOW', scope: 'EXECUTION', action: 'execution.run', resource: 'sandbox.*', priority: 10, reason: 'INV-042: resource bounded executions inside approved boundaries', version: '1.0.0' },
   { ruleId: 'POL-010', name: 'Model inference allowed with logging', effect: 'ALLOW', scope: 'MODEL', action: 'model.inference', resource: 'router.*', priority: 10, reason: 'INV-080: output is not fact; verdict requires verification', version: '1.0.0' },
+  { ruleId: 'POL-011', name: 'Read-only tools invocable after registration', effect: 'ALLOW', scope: 'TOOL', action: 'tool.execute', resource: 'readonly.*', priority: 10, reason: 'INV-062: registration + contract validation + read-only risk class → bounded invocation, evidence recorded', version: '1.0.0' },
+  { ruleId: 'POL-012', name: 'Side-effect tools denied by default', effect: 'DENY', scope: 'TOOL', action: 'tool.execute', resource: 'sideeffect.*', priority: 5, reason: 'INV-062: REGISTERED ≠ AUTHORIZED — side-effectful tools require an explicit governed ALLOW (POL-AUTH-*)', version: '1.0.0' },
 ];
 
 // Final fallback — DENY BY DEFAULT

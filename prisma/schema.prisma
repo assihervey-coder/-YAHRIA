@@ -310,3 +310,39 @@ model ReasoningRoute {
   latencyS2Ms Int      @default(0)
   createdAt   DateTime @default(now())
 }
+
+// ── DOMAIN 09 — TOOL REGISTRY ENGINE (INV-062: REGISTERED ≠ AUTHORIZED) ──
+
+model RegisteredTool {
+  id          String   @id @default(cuid())
+  toolId      String   @unique // dotted name: sandbox.toolchains.detect
+  name        String
+  version     String   @default("1.0.0") // semver, monotonic — downgrade refused
+  description String
+  ownerDomain String   @default("09") // canonical domain code of the owner
+  riskClass   String   @default("READ_ONLY") // READ_ONLY | SIDE_EFFECT
+  contract    String   // JSON Schema subset for the input (strict validation)
+  executable  Boolean  @default(false) // true = built-in handler bound; false = declarative only
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  invocations ToolInvocation[]
+}
+
+model ToolInvocation {
+  id          String   @id @default(cuid())
+  toolId      String
+  toolVersion String
+  callerType  String   // HUMAN | AGENT | SYSTEM
+  callerId    String
+  input       String   // JSON (validated against the contract)
+  result      String?  // JSON (capped)
+  error       String?  // tail (capped)
+  authEffect  String   // ALLOW | DENY | REQUIRE_APPROVAL
+  authRule    String?
+  ok          Boolean
+  ms          Int      @default(0)
+  traceId     String?
+  createdAt   DateTime @default(now())
+  tool        RegisteredTool? @relation(fields: [toolId], references: [toolId])
+}

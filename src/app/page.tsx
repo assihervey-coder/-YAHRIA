@@ -13,6 +13,7 @@ import { RealtimePanel } from '@/components/yahria/realtime-panel';
 import { StudioPanel } from '@/components/yahria/studio-panel';
 import { SupremacyPanel } from '@/components/yahria/supremacy-panel';
 import { LlmConnectorsPanel } from '@/components/yahria/llm-connectors-panel';
+import { ToolRegistryPanel } from '@/components/yahria/tool-registry-panel';
 import { useYahriaRealtime } from '@/hooks/use-yahria-realtime';
 import { Loader2, ShieldCheck } from 'lucide-react';
 
@@ -101,6 +102,7 @@ export default function Home() {
                 ['studio', 'Studio autonome'],
                 ['supremacy', 'Souveraineté R8'],
                 ['llm', 'Connecteurs IA'],
+                ['tools', 'Registre des outils'],
                 ['command', 'Centre de commande'],
                 ['cognitive', 'Raisonnement hybride'],
                 ['agents', 'Agent OS'],
@@ -121,6 +123,7 @@ export default function Home() {
             <TabsContent value="studio" className="mt-4"><StudioPanel events={rt.events} /></TabsContent>
             <TabsContent value="supremacy" className="mt-4"><SupremacyPanel /></TabsContent>
             <TabsContent value="llm" className="mt-4"><LlmConnectorsPanel /></TabsContent>
+            <TabsContent value="tools" className="mt-4"><ToolRegistryPanel /></TabsContent>
             <TabsContent value="command" className="mt-4"><CommandCenter data={data} /></TabsContent>
             <TabsContent value="cognitive" className="mt-4"><CognitiveConsole /></TabsContent>
             <TabsContent value="agents" className="mt-4"><AgentPanel agents={data.agents} onChanged={refresh} /></TabsContent>
