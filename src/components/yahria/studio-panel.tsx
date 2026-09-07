@@ -34,6 +34,10 @@ const STACK_CHOICES: { value: string; label: string }[] = [
   { value: 'GO', label: 'Go — service / CLI' },
   { value: 'RUST', label: 'Rust — binaire / service' },
   { value: 'JAVA', label: 'Java — Spring / Maven' },
+  { value: 'C', label: 'C — gcc (binaire / système)' },
+  { value: 'CPP', label: 'C++ — g++ (binaire / système)' },
+  { value: 'CSHARP', label: 'C# — dotnet / mono (console)' },
+  { value: 'FORTRAN', label: 'Fortran — gfortran (calcul)' },
 ];
 
 interface ParsedTree {

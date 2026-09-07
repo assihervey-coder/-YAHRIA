@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | **Doc ID** | YAHRIA-KRN-024 / YAHRIA-STD-003 |
-| **Version** | 1.0.0 |
+| **Version** | 1.1.0 (R11.2 polyglotte CLI + backend conteneur ; R11.3 assets Docker) |
 | **Domaine** | D.08 — Execution Fabric |
 | **Modules** | `src/lib/yahria/sandbox-executor.ts` (mécanique) · `src/lib/yahria/live-proof.ts` (boucle gouvernée) |
 | **Endpoint** | `POST /api/yahria/studio/runs/[id]/execute` |
-| **Invariants** | INV-042, INV-080, INV-190, INV-210, INV-211 · POL-009 · machine à états `SEALED → LIVE_PROVED` |
+| **Invariants** | INV-042, INV-080, INV-190, INV-210, INV-211, **INV-214** (parité polyglotte), **INV-215** (isolation conteneur) · POL-009 · machine à états `SEALED → LIVE_PROVED` |
 | **Date** | 2026-09-07 |
 
 ---
@@ -22,20 +22,39 @@ Le verdict est un **fait mesuré** (réponse HTTP de l'app réelle), jamais une 
 
 `executeLiveAttempt()` enchaîne des étapes bornées (INV-042) sur des **recettes fixes** — aucun shell fourni par l'utilisateur, aucune injection possible :
 
-| Étape | TIMEOUT | PYTHON | NEXTJS | NODE | STATIC_WEB | GO | RUST | JAVA |
-|---|---|---|---|---|---|---|---|---|
-| install | 150 s | `pip3 install -r requirements.txt` (toléré) | `bun install` | `bun install` (toléré) | — | — | — | — |
-| syntaxe | 20 s/fich. | `python3 -m py_compile` | — | `node --check` | — | — | — | — |
-| build | 300 s | — | `bunx next build` | — | — | `go build` | `cargo build --release` | `javac` |
-| lancement | — | `uvicorn <mod>:app` | `bunx next start -p P` | `node/bun <entry>` | `http.server` | `./app.bin` | binaire release | — |
-| sonde HTTP | 45 s | `/health /docs /` | `/` | `/ /health /api` | `/` | `/ /health` | `/ /health` | — |
+| Étape | TIMEOUT | PYTHON | NEXTJS | NODE | STATIC_WEB | GO | RUST | JAVA | C | CPP | CSHARP | FORTRAN |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| install | 150 s | `pip3 install -r requirements.txt` (toléré) | `bun install` | `bun install` (toléré) | — | — | — | — | — | — | — | — |
+| syntaxe | 20 s/fich. | `python3 -m py_compile` | — | `node --check` | — | — | — | — | — | — | — | — |
+| build | 300 s | — | `bunx next build` | — | — | `go build` | `cargo build --release` | `javac` | `gcc -std=c11 -Wall -Wextra` | `g++ -std=c++17 -Wall -Wextra` | `dotnet build -c Release` ou `mcs` | `gfortran -std=f2018 -Wall` |
+| lancement | — | `uvicorn <mod>:app` | `bunx next start -p P` | `node/bun <entry>` | `http.server` | `./app.bin` | binaire release | — | — | — | — | — |
+| **run CLI** | 90 s | — | — | — | — | — | — | — | `./yahria_app` | `./yahria_app` | `dotnet yahria_out/*.dll` ou `mono app.exe` | `./yahria_app` |
+| sonde HTTP | 45 s | `/health /docs /` | `/` | `/ /health /api` | `/` | `/ /health` | `/ /health` | — | — | — | — | — |
+
+**Porte d'exécution CLI (R11.2)** — les stacks binaires reçoivent une preuve
+équipollente aux sondes HTTP : le binaire produit par le build est réellement
+exécuté ; `PROVED` exige `exit 0` **et** la capture du marqueur `YAHRIA-LINK-OK`
+dans stdout (convention transmise aux agents architecte/coder via les
+conventions de stack). `exit 0` sans marqueur → `PARTIAL` honnête ; échec
+d'exécution → `UNPROVED`. C# est détecté en deux modes : `.csproj` présent →
+chaîne `dotnet` (le nom du csproj fixe le nom d'assembly) ; sinon sources nues
+→ `mcs` + `mono`.
 
 Décisions clés :
 - **Module uvicorn en chemin pointé** : `app/main.py` → `app.main:app` (bug corrigé après le premier test).
 - **Environnement enfant scrubé** (INV-213 adjacent) : PATH/HOME/LANG seulement + PORT — ni `DATABASE_URL`, ni clés API, ni variables YAHRIA.
 - **Ports** : balayage borné 3910+ (2 par tentative) ; processus en **groupe détaché**, arrêté SIGTERM puis SIGKILL.
 - **Sorties** : queues de 8 Ko max ; le diagnostic de lancement garde **la fin** de stderr (où Python écrit `ModuleNotFoundError`), pas le début.
-- **Toolchains** détectés et **versions journalisées** dans chaque rapport (INV-190) : python3, pip3, bun, node, go, cargo, javac.
+- **Toolchains** détectés et **versions journalisées** dans chaque rapport (INV-190) : python3, pip3, bun, node, go, cargo, javac, gcc, g++, gfortran, dotnet, mono, mcs.
+
+**Backend d'exécution (INV-215)** — `YAHRIA_SANDBOX_BACKEND` :
+
+| Backend | Isolation | Exigence |
+|---|---|---|
+| `process` (défaut) | confinement process : cwd workspace, env scrubé, recettes fixes, timeouts, kill de groupe | aucune — outillages présents sur l'hôte |
+| `docker` | chaque étape dans un conteneur durci : `--network none --read-only --cap-drop ALL --cpus 1 --memory 512m --pids-limit 128 --tmpfs /tmp --security-opt no-new-privileges`, workspace monté `/work` | démon Docker + image `yahria-sandbox` (`docker/sandbox.Dockerfile`, toolchains complets) |
+
+En backend docker, la **porte toolchain hôte est remplacée par une porte docker** (`docker version`) : si le démon est absent, la preuve est refusée honnêtement (`UNPROVED`, INV-210) — jamais de repli silencieux vers process.
 
 ## 3. Verdicts honnêtes (INV-210)
 
@@ -75,9 +94,22 @@ Cycle exécuté sur RUN-000009 (API FastAPI générée par S2, 7 fichiers) :
 
 Cas d'école supplémentaires observés pendant le calibrage : `requirements.txt` invalide (`python<4.0,>=3.9`) réparé automatiquement par la boucle ; budget 3 tentatives épuisé sur un bug Pydantic récalcitrant → `UNPROVED` honnête, livraison conservée.
 
+### 6.1 Preuves polyglottes R11.2 (tests réels, 2026-09-07)
+
+Quatre missions générées par S2 (fabric LLM, zai glm-4.6) puis exécutées dans le sandbox process — **4/4 `LIVE_PROVED` en une tentative** :
+
+| Stack | Run | Toolchain | Preuve |
+|---|---|---|---|
+| C | RUN-000013 | gcc 14.2 (Debian) | build `-Wall -Wextra` sans warning, binaire exécuté, marqueur `YAHRIA-LINK-OK` capturé |
+| C++ | RUN-000014 | g++ 14.2 | idem — `median=4.5`, `variance=4.5` |
+| FORTRAN | RUN-000015 | gfortran 16.2 (conda-forge, espace utilisateur) | idem — moyenne/écart-type conformes |
+| CSHARP | RUN-000017 | dotnet SDK 8.0.424 (dotnet-install, espace utilisateur) | `dotnet build -c Release`, `dotnet yahria_out/YahriaApp.dll`, marqueur capturé |
+
+Constat R7.2 (même journée) : PostgreSQL 16.2 en espace utilisateur (binaires pgserver), schéma poussé via bascule provider, round-trip `SystemEvent` 59 ms, application Next.js complète sur `:3001` contre PostgreSQL (`ok:true`) puis restauration SQLite sans perte (17 runs intacts).
+
 ## 7. Frontières honnêtes
 
-- **Isolation = process-level** (cwd confiné, env scrubé, recettes fixes, timeouts, kill de groupe) — **pas un conteneur ni OverlayFS noyau** : un code généré malveillant pourrait écrire dans le workspace et lire le réseau hôte. L'élévation vers conteneur/firejail/namespaces reste un jalon futur (l'OverlayFS de la constitution reste, lui, conceptuel).
+- **Isolation par défaut = process-level** (cwd confiné, env scrubé, recettes fixes, timeouts, kill de groupe) — **pas un conteneur ni OverlayFS noyau** : un code généré malveillant pourrait écrire dans le workspace et lire le réseau hôte. Le backend **`YAHRIA_SANDBOX_BACKEND=docker`** (R11.3) élève chaque étape vers un conteneur durci (sans réseau, read-only, cap-drop ALL, ressources bornées) — nécessite un hôte Docker + l'image `yahria-sandbox` ; le démon Docker n'existe pas dans le bac à sable de développement, le build des images est à valider sur hôte réel.
 - `pip3 install` utilise le réseau hôte — POL-003 (interdiction d'egress) s'applique au sandbox *agent* de la constitution ; ici l'hôte exécute des recettes bornées. Écart documenté, assumé.
 - Les sondes sont des GET publics (< 400) : elles prouvent que le serveur répond, pas la justesse métier des réponses (des tests fonctionnels générés sont l'étape suivante naturelle).
 - Next.js : le build réel est exécuté (preuve forte) mais `next start` n'est sondé que sur `/` (les pages d'erreur React peuvent répondre 200 — acceptable pour la preuve de démarrage).

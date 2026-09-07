@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-// YAHRIA KERNEL — Global Invariants (INV-001 → INV-211)
+// YAHRIA KERNEL — Global Invariants (INV-001 → INV-215)
 // Doc ID: YAHRIA-KRN-002 | Source: GLOBAL_INVARIANTS.md V1.0.0 FROZEN
 // ═══════════════════════════════════════════════════════════════
 
@@ -87,6 +87,8 @@ export const INVARIANTS: Invariant[] = [
   { id: 'INV-211', family: 'FAILURE', title: 'Failure Preserves Evidence', rule: 'Failure MUST NOT automatically erase evidence.' },
   { id: 'INV-212', family: 'OVERSIGHT', title: 'Single LLM Route', rule: 'Every LLM call routes through the fabric: declared providers, ordered fallback, visible attempts trace — no ad-hoc provider imports.' },
   { id: 'INV-213', family: 'SECURITY', title: 'Credentials Never Exposed', rule: 'Provider API keys stay server-side; telemetry exposes masked keys only.' },
+  { id: 'INV-214', family: 'EXECUTION', title: 'Polyglot Proof Parity', rule: 'Every requested stack — including C, C++, C#, Fortran — goes through the SAME sandbox proof gates (build + run + output marker); no language is second-class, no stack ships unverified.' },
+  { id: 'INV-215', family: 'SECURITY', title: 'Container Isolation When Docker', rule: 'When YAHRIA_SANDBOX_BACKEND=docker, every sandbox step runs in a hardened container: no network, read-only rootfs, all capabilities dropped, cpu/memory/pids bounded. The process backend remains an honestly documented weaker isolation.' },
 ];
 
 export const INVARIANT_FAMILIES = Array.from(new Set(INVARIANTS.map((i) => i.family)));

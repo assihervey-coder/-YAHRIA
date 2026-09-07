@@ -98,7 +98,7 @@ export async function runLiveProof(runId: string): Promise<LiveProofResult> {
 
   await db.generationRun.update({ where: { id: runId }, data: { liveState: 'RUNNING', livePort: null } });
   emitLive(STUDIO_EVENTS.LIVE_STARTED, 'INFO',
-    `Studio ${run.runUid} : preuve live démarrée — install → syntaxe → build → lancement → sonde HTTP (budget ${MAX_ATTEMPTS} tentative(s))`, run.runUid,
+    `Studio ${run.runUid} : preuve live démarrée — install → syntaxe → build → exécution (serveur HTTP ou CLI) → sondes (budget ${MAX_ATTEMPTS} tentative(s))`, run.runUid,
     { stack: run.stack, maxAttempts: MAX_ATTEMPTS });
 
   const t0 = Date.now();
@@ -134,9 +134,12 @@ export async function runLiveProof(runId: string): Promise<LiveProofResult> {
       });
       if (report.verdict === 'PROVED') {
         await transitionRun(runId, run.runUid, 'SEALED', 'LIVE_PROVED');
+        const proofDetail = report.launch
+          ? `HTTP ${report.probes.find((p) => p.status !== null && p.status < 400)?.status} sur port ${port}`
+          : 'exécution CLI conforme (exit 0, marqueur capturé)';
         emitLive(STUDIO_EVENTS.LIVE_PROVED, 'SUCCESS',
-          `Studio ${run.runUid} : APP RÉELLEMENT EXÉCUTÉE — HTTP ${report.probes.find((p) => p.status !== null && p.status < 400)?.status} sur port ${port} en ${Math.round(report.ms / 100) / 10}s${repaired.length > 0 ? ` (auto-réparée : ${repaired.map((r) => r.path).join(', ')})` : ''}`,
-          run.runUid, { port, probes: report.probes, attempts: attempt, repaired });
+          `Studio ${run.runUid} : APP RÉELLEMENT EXÉCUTÉE — ${proofDetail} en ${Math.round(report.ms / 100) / 10}s${repaired.length > 0 ? ` (auto-réparée : ${repaired.map((r) => r.path).join(', ')})` : ''}`,
+          run.runUid, { port, probes: report.probes, steps: report.steps.map((s) => ({ label: s.label, ok: s.ok })), attempts: attempt, repaired });
         return { ok: true, verdict: 'PROVED', attempts: attempt, repaired, reason: report.reason, port, state: 'LIVE_PROVED' };
       }
       emitLive(STUDIO_EVENTS.LIVE_PROVED, 'INFO',

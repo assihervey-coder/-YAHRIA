@@ -73,3 +73,11 @@ __pycache__/
 .pytest_cache/
 .venv/
 *.egg-info/
+
+# R7.2 — cluster PostgreSQL local (espace utilisateur, non versionné)
+.pgdata/
+.pgsock/
+.pg.log
+
+# Logs locaux
+dev-pg.log

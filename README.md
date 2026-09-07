@@ -28,7 +28,7 @@ traçable et prouvée*. Ce dépôt contient :
    et la mission est **scellée par des preuves** puis livrée en ZIP + éditeur IA
    de régénération fichier par fichier.
    - **Langage au choix** : sélecteur de stack (Next.js, Node.js, Python,
-     HTML/CSS/JS statique, Go, Rust, Java) — le choix humain gouverne sur la
+     HTML/CSS/JS statique, Go, Rust, Java, **C, C++, C#, Fortran**) — le choix humain gouverne sur la
      détection S1 (INV-081) ; parsing hiérarchique des glyphes `tree`
      (`src/app/` + `├── page.tsx` → `src/app/page.tsx`).
    - **Résilience S2** : backoff anti rate-limit (429), pacing inter-fichiers,
@@ -104,7 +104,7 @@ Règles structurelles clés :
 | `self-heal.ts` | **R8** — auto-réparation bornée, réparations déterministes, re-scellement par certificat |
 | `attestation.ts` | **R8** — attestation workspace signée (type SLSA/in-toto), vérification + diff anti-régression |
 | `llm-fabric.ts` | **R10** — **fabric LLM multi-fournisseurs** (YAHRIA-KRN-023) : route unique INV-212, repli ordonné, circuit breaker, télémétrie masquée INV-213 |
-| `sandbox-executor.ts` | **R11** — **exécuteur sandbox** (YAHRIA-KRN-024) : recettes par stack (install/syntaxe/build/lancement/sondes HTTP), env scrubé, ports bornés, toolchains INV-190 |
+| `sandbox-executor.ts` | **R11/R11.2** — **exécuteur sandbox** (YAHRIA-KRN-024) : recettes par stack (install/syntaxe/build/lancement/sondes HTTP **ou build+run CLI avec marqueur**), env scrubé, ports bornés, toolchains INV-190, **backend conteneur Docker durci** (INV-215 : `--network none --read-only --cap-drop ALL`) |
 | `live-proof.ts` | **R11** — boucle gouvernée self-heal : POL-009, budget borné, diagnostic fautif, réparation IA, verdicts PROVED/PARTIAL/UNPROVED |
 
 ## API `/api/yahria/*`
@@ -125,7 +125,7 @@ Règles structurelles clés :
 | `GET studio/runs/[id]/download` | Télécharge la livraison ZIP (état SEALED requis) |
 | `GET / POST supremacy` | **R8** — catalogue + 12 capacités de souveraineté : preuves embarquées, Merkle, blast radius, débat, time-travel, fuzzing, self-heal, attestations |
 | `GET / POST llm` | **R10** — fabric LLM : statut fournisseurs (GET), sonde de connectivité + réordonnancement runtime (POST) |
-| `POST studio/runs/[id]/execute` | **R11** — **preuve live** : install → syntaxe → build → lancement sandbox → sondes HTTP → self-heal borné → `SEALED → LIVE_PROVED` |
+| `POST studio/runs/[id]/execute` | **R11/R11.2** — **preuve live** : install → syntaxe → build → lancement sandbox + sondes HTTP (stacks serveur) **ou compilation + exécution CLI avec capture du marqueur `YAHRIA-LINK-OK`** (C, C++, C#, Fortran) → self-heal borné → `SEALED → LIVE_PROVED` |
 | `WS /ws/yahria` | **Flux temps réel** (WebSocket, domaine 11) — handshake `hello → snapshot → events` |
 
 ## YAHRIA Mission Control (UI)
@@ -137,7 +137,8 @@ d'arborescence (ou brief seul, l'architecte S2 concevant alors les fichiers),
 validation S1 en direct, progression de la machine à états alimentée par le
 journal WebSocket, navigateur de fichiers générés, éditeur IA par instruction,
 **exécution sandbox en un clic avec preuve live** (bouton « Exécuter en
-sandbox » : install, syntaxe, build, lancement réel, sondes HTTP, auto-réparation
+sandbox » : install, syntaxe, build, lancement réel, sondes HTTP **ou
+compilation + exécution binaire** pour C/C++/C#/Fortran, auto-réparation
 bornée — verdict PROVED/PARTIAL/UNPROVED affiché avec le rapport complet),
 et téléchargement du ZIP scellé. Le panneau **Souveraineté R8** auto-démontre
 en un clic les huit capacités de calibre expert (preuves embarquées, Merkle,
@@ -167,9 +168,49 @@ temps réel dans le même processus Node (bus d'événements partagé via
 Le seed constitutionnel est **idempotent** : au premier appel système, le
 bootstrap installe agents, domaines, politiques et invariants.
 
-> Les décisions S2 (LLM) passent par le SDK local `z-ai-web-dev-sdk` ; sans
+> Les décisions S2 (LLM) passent par la **fabric multi-fournisseurs** (`llm-fabric.ts`) ; sans
 > backend LLM disponible, le routeur hybride dégrade en **fallback explicite**
 > (jamais de succès non prouvé — `UNKNOWN ≠ SUCCESS`).
+
+## Bases de données — R7.2 (SQLite ⇄ PostgreSQL)
+
+Prisma est piloté par **un seul schéma, deux providers**. SQLite reste le
+défaut de développement (zéro service à installer) ; PostgreSQL est la cible
+production. La bascule est outillée et le schéma est identique (17 modèles) :
+
+```bash
+# Passer en PostgreSQL (l'URL doit pointer vers votre instance)
+DATABASE_URL="postgresql://yahria@127.0.0.1:5433/yahria" npm run db:pg
+# Revenir à SQLite
+npm run db:sqlite
+```
+
+`scripts/db-provider.mjs` réécrit le provider de `prisma/schema.prisma`, puis
+`prisma generate` + `db push` alignent client et base. **Preuves live R7.2** :
+PostgreSQL 16.2 exécuté en espace utilisateur (binaires pgserver), schéma
+poussé, round-trip `SystemEvent` vérifié (59 ms), et **application Next.js
+complète démarrée sur PostgreSQL** (`GET /api/yahria/studio/runs` → `ok:true`)
+avant restauration de SQLite. `docker-compose.yml` fournit la cible
+production (`postgres:16-alpine` + volume persistant).
+
+## Conteneurisation — R11.3
+
+Trois artefacts Docker sont livrés (le démon Docker n'existe pas dans ce bac
+à sable — les images sont **fournies et documentées**, leur build est à
+valider sur un hôte Docker réel) :
+
+- **`Dockerfile`** — image application multi-stage (`yahria-os`) : génération
+  du client Prisma pour PostgreSQL, build Next, entrypoint idempotent
+  (`docker/docker-entrypoint.sh` : bascule provider → `db push` → serveur) ;
+- **`docker-compose.yml`** — stack complète `app + postgres:16-alpine`
+  (healthcheck, volume `pgdata`, workspaces persistés) ;
+- **`docker/sandbox.Dockerfile`** — **image sandbox durcie** `yahria-sandbox`
+  (Ubuntu 24.04, non-root) embarquant **tous les toolchains** : gcc/g++,
+  gfortran, Python 3, Node, dotnet 8, mono. Avec
+  `YAHRIA_SANDBOX_BACKEND=docker`, chaque étape d'exécution sandbox tourne
+  dans un conteneur sans réseau, rootfs read-only, capabilities droppées,
+  CPU/RAM/PIDs bornés (INV-215) — l'isolation conteneur remplace le
+  confinement process par défaut, plus faible, documenté honnêtement.
 
 ## Les 2 fichiers manquants — restaurés
 
@@ -193,7 +234,7 @@ du contrat 00 en fichiers racine autonomes.
 ├── src/
 │   ├── app/                    # Next.js App Router (UI + API)
 │   │   ├── api/yahria/         # 7 endpoints constitutionnels + studio (5 routes)
-│   │   └── page.tsx            # Mission Control (10 panneaux)
+│   │   └── page.tsx            # Mission Control (12 panneaux)
 │   ├── components/yahria/      # Panneaux Mission Control + Studio autonome
 │   ├── hooks/                  # use-yahria-realtime (WS)
 │   └── lib/yahria/             # ⭐ Noyau constitutionnel (15 modules + realtime)

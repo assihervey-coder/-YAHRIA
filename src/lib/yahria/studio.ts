@@ -68,7 +68,7 @@ export interface GeneratedContent {
 export const MAX_TREE_FILES = 48;
 
 /** Stacks sélectionnables — le choix humain gouverne sur la détection (INV-081 : l'incertitude est étiquetée). */
-export const STUDIO_STACKS = ['AUTO', 'NEXTJS', 'NODE', 'PYTHON', 'STATIC_WEB', 'GO', 'RUST', 'JAVA'] as const;
+export const STUDIO_STACKS = ['AUTO', 'NEXTJS', 'NODE', 'PYTHON', 'STATIC_WEB', 'GO', 'RUST', 'JAVA', 'C', 'CPP', 'CSHARP', 'FORTRAN'] as const;
 export type StudioStack = (typeof STUDIO_STACKS)[number];
 
 export const STACK_LABELS: Record<string, string> = {
@@ -80,6 +80,10 @@ export const STACK_LABELS: Record<string, string> = {
   GO: 'Go (service / CLI)',
   RUST: 'Rust (binaire / service)',
   JAVA: 'Java (Spring / Maven / Gradle)',
+  C: 'C (gcc — binaire / système / CLI)',
+  CPP: 'C++ (g++ — binaire / système / CLI)',
+  CSHARP: 'C# (dotnet / mono — console / application)',
+  FORTRAN: 'Fortran (gfortran — calcul scientifique)',
 };
 
 export const STACK_HINTS: Record<string, string> = {
@@ -90,6 +94,10 @@ export const STACK_HINTS: Record<string, string> = {
   GO: 'go.mod, main.go, package unique, tests _test.go',
   RUST: 'Cargo.toml, src/main.rs, modules src/',
   JAVA: 'pom.xml ou build.gradle, src/main/java, classe Main',
+  C: 'sources .c/.h sous src/, point d\'entrée main() dans src/main.c, compilé gcc -std=c11 — le programme doit imprimer exactement la ligne YAHRIA-LINK-OK quand il réussit',
+  CPP: 'sources .cpp/.hpp sous src/, point d\'entrée main() dans src/main.cpp, compilé g++ -std=c++17 — le programme doit imprimer exactement la ligne YAHRIA-LINK-OK quand il réussit',
+  CSHARP: 'un seul .csproj à la racine (le nom du fichier csproj = nom d\'assembly) + Program.cs, style .NET 8 console ou mono — le programme doit imprimer exactement la ligne YAHRIA-LINK-OK quand il réussit',
+  FORTRAN: 'sources .f90 sous src/, entry point program dans src/main.f90, compilé gfortran -std=f2018 — le programme doit imprimer exactement la ligne YAHRIA-LINK-OK quand il réussit',
 };
 
 /**
@@ -265,6 +273,10 @@ export function detectStack(paths: string[]): string {
   if (has(/(^|\/)go\.mod$/i) || has(/\.go$/i)) return 'GO';
   if (has(/(^|\/)Cargo\.toml$/i) || has(/\.rs$/i)) return 'RUST';
   if (has(/(^|\/)(pom\.xml|build\.gradle)$/i)) return 'JAVA';
+  if (has(/\.(cpp|cc|cxx)$/i)) return 'CPP';
+  if (has(/\.(f90|f95|f03|f08|for|f)$/i)) return 'FORTRAN';
+  if (has(/\.(csproj|cs)$/i)) return 'CSHARP';
+  if (has(/\.c$/i)) return 'C';
   if (has(/\.(html?|css)$/i)) return 'STATIC_WEB';
   return 'UNKNOWN';
 }
@@ -279,6 +291,7 @@ export function classifyRole(p: string): FileRole {
       /^(dockerfile|\.dockerignore|\.gitignore|\.env[^/]*|makefile|requirements\.txt|pyproject\.toml|go\.mod|go\.sum|cargo\.toml|pom\.xml|build\.gradle|next\.env\.d\.ts|components\.json|eslint.*|\.eslintrc.*|prettier.*|\.prettierrc.*)$/i.test(base)) return 'config';
   if (ext === 'yaml' || ext === 'yml' || ext === 'toml' || ext === 'ini' || ext === 'env' || ext === 'lock') return 'config';
   if (/^(index|main|app|server|bootstrap|entry|wsgi|asgi|manage|__init__)\.[a-z]+$/i.test(base) ||
+      /^(program|main)\.(cs|cpp|cc|cxx|f90|f95|f03)$/i.test(base) ||
       /^((src\/)?app\/)?(layout|page|route)\.(tsx|ts|jsx|js)$/.test(p)) return 'entry';
   if (/\.(png|jpe?g|gif|svg|ico|webp|woff2?|ttf|eot|mp4|mp3|pdf)$/i.test(base)) return 'asset';
   if (/\.(tsx|jsx|vue|svelte)$/i.test(base)) return 'component';
@@ -340,12 +353,12 @@ export function extractJson(raw: string): unknown | null {
 export async function proposeTree(brief: string, forcedStack?: string): Promise<ParsedTree> {
   const stackRule = forcedStack && forcedStack !== 'AUTO'
     ? `- MANDATORY: the stack is ${forcedStack}. Every file, config and dependency MUST belong to this stack (${STACK_HINTS[forcedStack] ?? forcedStack}).`
-    : `- Choose the single best stack for the brief among NEXTJS, NODE, PYTHON, STATIC_WEB, GO, RUST, JAVA.`;
+    : `- Choose the single best stack for the brief among NEXTJS, NODE, PYTHON, STATIC_WEB, GO, RUST, JAVA, C, CPP, CSHARP, FORTRAN.`;
   try {
     const raw = await callLLMWithBackoff(
       `You are YAHRIA's architect agent. Design the MINIMAL viable file tree for a complete, runnable application.
 Rules:
-- STRICT JSON only: {"stack": "NEXTJS|NODE|PYTHON|STATIC_WEB|GO|RUST|JAVA", "files": [{"path": "relative/path.ext", "purpose": "one line"}]}
+- STRICT JSON only: {"stack": "NEXTJS|NODE|PYTHON|STATIC_WEB|GO|RUST|JAVA|C|CPP|CSHARP|FORTRAN", "files": [{"path": "relative/path.ext", "purpose": "one line"}]}
 ${stackRule}
 - Maximum 16 files. Every file must be essential to run the application.
 - NEVER include node_modules, dist, build, .git, lock files, or binary assets.
@@ -384,6 +397,10 @@ function minimalTreeFor(stack?: string): string[] {
     case 'GO': return ['go.mod', 'main.go', 'README.md'];
     case 'RUST': return ['Cargo.toml', 'src/main.rs', 'README.md'];
     case 'JAVA': return ['pom.xml', 'src/main/java/com/yahria/Main.java', 'README.md'];
+    case 'C': return ['src/main.c', 'src/util.c', 'src/util.h', 'README.md'];
+    case 'CPP': return ['src/main.cpp', 'src/util.cpp', 'src/util.hpp', 'README.md'];
+    case 'CSHARP': return ['YahriaApp.csproj', 'Program.cs', 'README.md'];
+    case 'FORTRAN': return ['src/main.f90', 'README.md'];
     case 'NEXTJS': return ['package.json', 'next.config.mjs', 'src/app/layout.tsx', 'src/app/page.tsx', 'README.md'];
     default: return ['package.json', 'README.md', 'src/index.js'];
   }
@@ -405,7 +422,7 @@ Rules:
 - Cover EVERY file in the tree exactly once, same paths, no invented paths.
 - depends_on lists files that must exist before this one (imports/config). Empty array if none.
 - key_points must be specific (functions, routes, exports, schemas) — not generic advice.
-- The stack is AUTHORITATIVE: every plan must fit ${tree.stack} idioms and tooling${tree.stack === 'NEXTJS' ? ' (App Router — src/app/ structure)' : tree.stack === 'STATIC_WEB' ? ' (plain HTML/CSS/JS, no build step)' : tree.stack === 'PYTHON' ? ' (stdlib-first, requirements.txt)' : ''}.`,
+- The stack is AUTHORITATIVE: every plan must fit ${tree.stack} idioms and tooling${tree.stack === 'NEXTJS' ? ' (App Router — src/app/ structure)' : tree.stack === 'STATIC_WEB' ? ' (plain HTML/CSS/JS, no build step)' : tree.stack === 'PYTHON' ? ' (stdlib-first, requirements.txt)' : ''}${STACK_HINTS[tree.stack] ? ` — STACK CONVENTIONS: ${STACK_HINTS[tree.stack]}` : ''}.`,
       `STACK: ${tree.stack}
 MISSION BRIEF:
 ${brief.slice(0, 1800)}
@@ -545,7 +562,7 @@ STRICT OUTPUT RULES:
 - The file must be complete and self-consistent: no TODOs, no placeholders, no truncated bodies.
 - Imports may only reference files present in the provided tree or standard/well-known libraries of the stack.
 - Match the declared purpose and key points exactly.
-- Keep the file focused: ${ctx.stack} conventions, clean structure.`;
+- Keep the file focused: ${ctx.stack} conventions, clean structure.${STACK_HINTS[ctx.stack] ? ` STACK CONVENTIONS: ${STACK_HINTS[ctx.stack]}` : ''}`;
 
   const depBlock = ctx.dependencySources.length > 0
     ? `\nDEPENDENCY FILES (already generated):\n${ctx.dependencySources
