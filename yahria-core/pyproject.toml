@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "yahria-core"
-version = "2.3.0.r7.1"
+version = "2.3.0.post0+r7.1"
 description = "YAHRIA constitutional kernel — Python port (R7.1) with TS parity harness"
 readme = "README.md"
 requires-python = ">=3.10"
