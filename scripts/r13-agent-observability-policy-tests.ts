@@ -229,7 +229,7 @@ async function main(): Promise<void> {
 
   const sys = await get('/api/yahria/system');
   const doms = sys.domains ?? [];
-  check('domaines : 14/24 actifs (D.11 + D.12 activés sur preuves)', doms.filter((d: any) => d.status !== 'NOT_STARTED').length === 14,
+  check('domaines : ledger en croissance monotone (≥ 14 actifs — 24/24 depuis R14)', doms.filter((d: any) => d.status !== 'NOT_STARTED').length >= 14,
     `obtenu ${doms.filter((d: any) => d.status !== 'NOT_STARTED').length}`);
   const d11 = doms.find((d: any) => d.code === '11');
   const d12 = doms.find((d: any) => d.code === '12');

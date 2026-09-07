@@ -116,4 +116,31 @@ export const REALTIME_EVENT_TYPES = {
   POLICY_RULE_CREATED: 'policy.rule.created',
   POLICY_RULE_TOGGLED: 'policy.rule.toggled',
   POLICY_SIMULATED: 'policy.simulated',
+  // Memory System (Domain 13 — governed memory, R14)
+  MEMORY_WRITTEN: 'memory.written',
+  MEMORY_CONSOLIDATED: 'memory.consolidated',
+  MEMORY_FORGOTTEN: 'memory.forgotten',
+  // Mission Graph (Domain 07 — multi-agent orchestration, R14)
+  MISSION_CREATED: 'mission.created',
+  MISSION_SCHEDULED: 'mission.scheduled',
+  MISSION_TASK_STARTED: 'mission.task.started',
+  MISSION_TASK_COMPLETED: 'mission.task.completed',
+  MISSION_TASK_FAILED: 'mission.task.failed',
+  MISSION_COMPLETED: 'mission.completed',
+  MISSION_FAILED: 'mission.failed',
+  MISSION_CANCELLED: 'mission.cancelled',
+  // Learning Engine (Domain 14 — R14)
+  LEARNING_MINED: 'learning.mined',
+  LEARNING_VALIDATED: 'learning.validated',
+  // Self-Evolution (Domain 15 — R14)
+  EVOLUTION_PROPOSED: 'evolution.proposed',
+  EVOLUTION_DECIDED: 'evolution.decided',
+  // API & Integration (Domain 17 — R14)
+  APIKEY_ISSUED: 'apikey.issued',
+  APIKEY_REVOKED: 'apikey.revoked',
+  API_V1_CALL: 'api.v1.call',
+  // Security (Domain 19 — R14)
+  SECURITY_AUDITED: 'security.audited',
+  // Quality (Domain 20 — R14)
+  QUALITY_GATES_RUN: 'quality.gates.run',
 } as const;

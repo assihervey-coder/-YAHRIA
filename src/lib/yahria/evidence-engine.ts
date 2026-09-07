@@ -11,7 +11,7 @@ export type EvidenceCategory =
   | 'CODE' | 'BUILD' | 'TEST' | 'EXECUTION' | 'TOOL' | 'AGENT' | 'MODEL'
   | 'POLICY' | 'SECURITY' | 'CONFIGURATION' | 'DATABASE' | 'ARTIFACT'
   | 'TRACE' | 'METRIC' | 'AUDIT' | 'RELEASE' | 'DEPLOYMENT' | 'INCIDENT'
-  | 'FORENSIC' | 'REPLAY';
+  | 'FORENSIC' | 'REPLAY' | 'MEMORY' | 'TASK' | 'EVOLUTION' | 'OPERATIONS';
 
 export type Criticality = 'CRITICAL' | 'HIGH' | 'STANDARD' | 'LOW' | 'INFORMATIONAL';
 

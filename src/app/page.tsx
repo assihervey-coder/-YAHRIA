@@ -17,6 +17,9 @@ import { ToolRegistryPanel } from '@/components/yahria/tool-registry-panel';
 import { AgentMissionsPanel } from '@/components/yahria/agent-missions-panel';
 import { ObservabilityPanel } from '@/components/yahria/observability-panel';
 import { PolicyConsolePanel } from '@/components/yahria/policy-console-panel';
+import { MissionGraphPanel } from '@/components/yahria/panels-missions';
+import { MemoryPanel, LearningPanel, EvolutionPanel } from '@/components/yahria/panels-intelligence';
+import { ApiPanel, SecurityPanel, QualityPanel, DevOpsPanel, OpsPanel, RoadmapPanel } from '@/components/yahria/panels-platform';
 import { useYahriaRealtime } from '@/hooks/use-yahria-realtime';
 import { Loader2, ShieldCheck } from 'lucide-react';
 
@@ -105,10 +108,20 @@ export default function Home() {
                 ['studio', 'Studio autonome'],
                 ['supremacy', 'Souveraineté R8'],
                 ['llm', 'Connecteurs IA'],
-                ['tools', 'Registre des outils'],
+                ['orchestration', 'Orchestration missions'],
                 ['missions', 'Missions agents'],
-                ['observability', 'Observabilité'],
+                ['memory', 'Mémoire'],
+                ['learning', 'Apprentissage'],
+                ['evolution', 'Auto-évolution'],
+                ['tools', 'Registre des outils'],
                 ['policy-console', 'Console politiques'],
+                ['observability', 'Observabilité'],
+                ['api', 'API & Intégration'],
+                ['security', 'Sécurité'],
+                ['quality', 'Qualité'],
+                ['devops', 'DevOps'],
+                ['ops', 'Opérations'],
+                ['roadmap', 'Roadmap'],
                 ['command', 'Centre de commande'],
                 ['cognitive', 'Raisonnement hybride'],
                 ['agents', 'Agent OS'],
@@ -129,6 +142,16 @@ export default function Home() {
             <TabsContent value="studio" className="mt-4"><StudioPanel events={rt.events} /></TabsContent>
             <TabsContent value="supremacy" className="mt-4"><SupremacyPanel /></TabsContent>
             <TabsContent value="llm" className="mt-4"><LlmConnectorsPanel /></TabsContent>
+            <TabsContent value="orchestration" className="mt-4"><MissionGraphPanel /></TabsContent>
+            <TabsContent value="memory" className="mt-4"><MemoryPanel /></TabsContent>
+            <TabsContent value="learning" className="mt-4"><LearningPanel /></TabsContent>
+            <TabsContent value="evolution" className="mt-4"><EvolutionPanel /></TabsContent>
+            <TabsContent value="api" className="mt-4"><ApiPanel /></TabsContent>
+            <TabsContent value="security" className="mt-4"><SecurityPanel /></TabsContent>
+            <TabsContent value="quality" className="mt-4"><QualityPanel /></TabsContent>
+            <TabsContent value="devops" className="mt-4"><DevOpsPanel /></TabsContent>
+            <TabsContent value="ops" className="mt-4"><OpsPanel /></TabsContent>
+            <TabsContent value="roadmap" className="mt-4"><RoadmapPanel /></TabsContent>
             <TabsContent value="tools" className="mt-4"><ToolRegistryPanel /></TabsContent>
             <TabsContent value="missions" className="mt-4"><AgentMissionsPanel /></TabsContent>
             <TabsContent value="observability" className="mt-4"><ObservabilityPanel /></TabsContent>

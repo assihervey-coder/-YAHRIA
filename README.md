@@ -242,8 +242,18 @@ l'inverse — conformément à `UNKNOWN ≠ SUCCESS`). Le registre est exposé d
 R12 a activé **D.09 (Tool Registry Engine)** ; R13 a activé **D.11 (Execution
 Observability)** — traces, replay lecture seule, forensics — et **D.12 (Policy
 Console)** — RBAC fin, verrou constitutionnel, simulation sans effet de bord.
-État courant : **14/24 domaines actifs** ; les 10 restants restent honnêtement
-`NOT_STARTED` tant qu'aucune preuve n'est archivée.
+R14 complète le ledger : **D.07 (Mission Graph multi-agents)**, **D.13 (Memory
+System gouverné)**, **D.14 (Learning Engine)**, **D.15 (Self-Evolution
+gouvernée)**, **D.17 (API & Integration — /api/v1 + clés hachées)**, **D.18
+(Frontend — 26 onglets)**, **D.19 (Security — audit scellé)**, **D.20 (Quality
+— gates mesurées)**, **D.21 (DevOps — CI constitutionnelle)**, **D.22
+(Operations — santé mesurée)**, **D.23 (Roadmap dérivée du ledger)**.
+État courant : **24/24 domaines `IMPLEMENTING`** — chaque entrée porte ses
+preuves archivées dans `DOMAIN_ACTIVATIONS` (16 entrées). Conformément au
+principe `UNKNOWN ≠ SUCCESS` : aucun domaine n'est déclaré `DONE` — la clôture
+exigera une décision gouvernée D.6 avec preuves ; 13 nouveaux invariants
+(INV-221 → INV-234) gardent les capacités R14 ; suites de preuves cumulées
+R12 (22/22) + R13 (46/46) + R14 (47/47) exécutées contre l'API live.
 
 ## Les 2 fichiers manquants — restaurés
 
@@ -266,13 +276,14 @@ du contrat 00 en fichiers racine autonomes.
 .
 ├── src/
 │   ├── app/                    # Next.js App Router (UI + API)
-│   │   ├── api/yahria/         # 10 endpoints constitutionnels + studio (5 routes)
-│   │   └── page.tsx            # Mission Control (16 panneaux)
+│   │   ├── api/yahria/         # 18 endpoints constitutionnels + studio (5 routes)
+│   │   ├── api/v1/             # Surface publique versionnée (clés API, INV-229/230)
+│   │   └── page.tsx            # Mission Control (26 panneaux)
 │   ├── components/yahria/      # Panneaux Mission Control + Studio autonome
 │   ├── hooks/                  # use-yahria-realtime (WS)
-│   └── lib/yahria/             # ⭐ Noyau constitutionnel (15 modules + realtime)
+│   └── lib/yahria/             # ⭐ Noyau constitutionnel (40 modules)
 ├── server.mjs                  # Serveur personnalisé : Next + WebSocket /ws/yahria
-├── prisma/schema.prisma        # 17 modèles (Tenant, Agent, Task, Evidence, GenerationRun…)
+├── prisma/schema.prisma        # 23 modèles (Tenant, Agent, Mission, MemoryRecord, LearningInsight, EvolutionProposal, ApiKey, Evidence…)
 ├── public/docs/                # 🧠 Spec Hybrid Reasoning + 🗺️ Carte architecture
 ├── YAHRIA_CANONICAL_BLUEPRINT/ # 📜 Racine canonique §5 : 6 docs d'autorité + 24 domaines
 ├── docs/corpus/                # Corpus constitutionnel (11 originaux + 2 restaurés)

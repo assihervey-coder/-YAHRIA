@@ -107,6 +107,125 @@ export const DOMAIN_ACTIVATIONS: DomainActivation[] = [
       'evaluatePolicy étendu (rétrocompatible) : portée acteur optionnelle par règle ; API /api/yahria/policy-console + panneau UI « Console politiques »',
     ],
   },
+  {
+    code: '07',
+    since: '2026-09-07',
+    evidence: [
+      'mission-graph.ts (YAHRIA-KRN-031) — orchestration multi-agents : Mission/MissionTask, DAG acyclique validé à la création (INV-223), une tâche = un agent canonique × un outil du registre (INV-224)',
+      'Moteur DAG par vagues (tick) : promotion PENDING→READY quand dépendances COMPLETED (INV-091), retry gouverné UNIQUEMENT sur échec d\u2019exécution — refus politique/capacité finaux (INV-092)',
+      'Décomposition S1 déterministe par patrons (DIAGNOSTIC/GOUVERNANCE/OBSERVATION) — stratégie DECOMPOSED, aucune invention d\u2019agent ou d\u2019outil (INV-191)',
+      'Exécution exclusivement via la passerelle gouvernée runAgentMission (INV-216/062/217) — preuves TASK scellées à chaque création et clôture',
+      'Machines à états gardées MISSION/TASK (transitions illégales → 422) + annulation par autorité humaine avec raison (INV-200/201)',
+      'API /api/yahria/missions + panneau UI « Orchestration missions » (graphe, tick, annulation) — suite de preuves R14 : mission DIAGEC créée, schedulée, ticks exécutés avec outils réels',
+    ],
+  },
+  {
+    code: '13',
+    since: '2026-09-07',
+    evidence: [
+      'memory.ts (YAHRIA-KRN-030) — écriture gouvernée : provenance OBLIGATOIRE (INV-221 mécanisée), validation INV-081 portée par chaque enregistrement (INV-140)',
+      'Oubli gouverné (INV-222) : raison ≥ 10 caractères exigée, preuve MEMORY scellée, ARCHITECTURAL non supprimable (refus testé)',
+      'Consolidation monotone WORKING/EPISODIC → SEMANTIC avec preuve adossée ; mémoire FALSE non consolidable (refus testé)',
+      'Récupération S1 (filtre kind/validation/recherche, rangée confiance+récence) — la validation voyage avec le souvenir',
+      'API /api/yahria/memory (GET/POST/PATCH/DELETE) + panneau UI « Mémoire » — suite R14 : écriture, consolidation, oubli gouverné, refus sans provenance',
+    ],
+  },
+  {
+    code: '14',
+    since: '2026-09-07',
+    evidence: [
+      'learning.ts (YAHRIA-KRN-032) — mining déterministe des faits enregistrés uniquement : ToolInvocation, AgentRun, FailureEvent (INV-226 — zéro auto-rapport de modèle)',
+      'Insights TOOL_RELIABILITY / AGENT_PERFORMANCE / FAILURE_PATTERN : upsert par (kind, subject), états OBSERVED→VALIDATED au seuil 3 échantillons (INV-225), PROMOTED/RETIRED intouchés par le mining',
+      'Confiance dérivée des échantillons (fonction pure learningConfidence) — jamais auto-proclamée (INV-150)',
+      'Promotion gouvernée insight VALIDATED → mémoire SEMANTIC (pont D.14→D.13), réversible (INV-151), preuves MODEL scellées',
+      'API /api/yahria/learning (mine/promote) + panneau UI « Apprentissage » — suite R14 : mining réel sur historique, promotion testée',
+    ],
+  },
+  {
+    code: '15',
+    since: '2026-09-07',
+    evidence: [
+      'evolution.ts (YAHRIA-KRN-033) — pipeline gouverné DRAFTED→SUBMITTED→UNDER_REVIEW→APPROVED→SCHEDULED→PROMOTED→ROLLED_BACK (INV-162), transitions illégales → 422',
+      'Séparation proposition/approbation MÉCANISÉE (INV-227) : refus testé quand l\u2019identité décisionnaire = proposant (HUMAN ou AGENT:key)',
+      'Plan de rollback obligatoire pour risque HIGH/CRITICAL avant APPROVED (INV-163) ; expérimentation documentée exigée avant PROMOTED (INV-162)',
+      'PROMOTED n\u2019exécute AUCUNE mutation de production (INV-228, graphe des dépendances interdites) — la promotion enregistre la décision gouvernée',
+      'Lignée D.14 → D.15 : sourceInsightUid obligatoirement existant (INV-034) ; preuves POLICY scellées à chaque décision',
+      'API /api/yahria/evolution + panneau UI « Auto-évolution » — suite R14 : création, refus auto-approbation, approbation par identité distincte',
+    ],
+  },
+  {
+    code: '17',
+    since: '2026-09-07',
+    evidence: [
+      'api-gateway.ts (YAHRIA-KRN-034) — clés API stockées en SHA-256 uniquement, plaintext retourné UNE fois à l\u2019émission (INV-229, refus de relecture)',
+      'Surface versionnée /api/v1/* : system, domains, missions, tools, memory, evidence, ops, roadmap (lecture) + POST missions (écriture, scope write)',
+      'Gouvernance des appels (INV-230) : clé absente/inconnue → 401, révoquée → 401, hors scope → 403, rate limit dépassé → 429 ; chaque appel journalisé (événement API_V1_CALL)',
+      'Rate limit par clé — fenêtre glissante 60 s, bornes 5..600/min ; scopes hiérarchiques read < write < admin',
+      'API /api/yahria/apikeys (émission/liste/révocation gouvernée) + panneau UI « API & Intégration » — suite R14 : émission, appel v1 authentifié, 401 sans clé, révocation, re-401',
+    ],
+  },
+  {
+    code: '18',
+    since: '2026-09-07',
+    evidence: [
+      'Mission Control — 26 onglets couvrant les plans studio/missions/mémoire/apprentissage/évolution/outils/politiques/observabilité/API/sécurité/qualité/DevOps/opérations/roadmap/cognition/preuves/temps réel',
+      'Nouveaux panneaux R14 : Orchestration missions (DAG + tick), Mémoire, Apprentissage, Auto-évolution, API & Intégration, Sécurité, Qualité, DevOps, Opérations, Roadmap — tous branchés sur leurs API gouvernées',
+      'UX responsive (grilles md/lg, wrap d\u2019onglets, cibles tactiles), thème industriel sombre cohérent, temps réel WebSocket (fan-out bus), verdicts honnêtes affichés (aucun succès inventé)',
+      'Accessibilité : sémantique (header/main/footer), focus states natifs shadcn/ui, badges d\u2019état standardisés (stateColor partagé)',
+    ],
+  },
+  {
+    code: '19',
+    since: '2026-09-07',
+    evidence: [
+      'security.ts (YAHRIA-KRN-035) — audit automatisé à 8 contrôles factuels : refus par défaut POL-012 vivant, règles constitutionnelles présentes, clés API hachées, clés fournisseurs côté serveur (noms seulement — valeurs jamais lues, INV-213/132)',
+      'Scan des identifiants versionnés (motifs ghp_/github_pat_/sk-ant-/AKIA/…) — emplacements signalés, valeurs jamais journalisées',
+      'Niveau d\u2019isolation sandbox rapporté honnêtement (process documenté plus faible vs docker durci INV-215)',
+      'Chaque audit persiste un OpsSnapshot et scelle une preuve SECURITY (INV-231) — constats jamais mutés après coup',
+      'Invariants de sécurité new : INV-229/230/231 ; API /api/yahria/security + panneau UI « Sécurité » — suite R14 : audit réel exécuté avec constats mesurés',
+    ],
+  },
+  {
+    code: '20',
+    since: '2026-09-07',
+    evidence: [
+      'quality.ts (YAHRIA-KRN-036) — 6 gates IN PROCESS mesurées (invariants unicité ≥ 97, contrats outils S1, parité registre DB↔noyau, machines à états, logique apprentissage pure, chaîne de preuves)',
+      '3 gates EXTERNES déclarées honnêtement (tsc/eslint/pytest) — exécutées par CI et scripts/quality-gates.mjs, jamais simulées in-process (INV-171)',
+      'scripts/quality-gates.mjs — runner des gates externes avec échec honnête ; .github/workflows/ci.yml exécute tsc, lint, pytest, scan secrets, seuil invariants, build',
+      'Chaque run persiste un OpsSnapshot QUALITY_GATES et scelle une preuve TEST (INV-232 : un gate qui échoue interdit toute déclaration DONE)',
+      'Suite de preuves cumulées : r8 (suprématie), r12 (registre 22/22), r13 (agents/obs/politique 46/46), r14 (plateforme) — régression protégée (INV-172)',
+    ],
+  },
+  {
+    code: '21',
+    since: '2026-09-07',
+    evidence: [
+      '.github/workflows/ci.yml — CI constitutionnelle : install verrouillé, tsc 0 erreur, eslint, pytest parité Python, scan d\u2019identifiants (INV-231), registre ≥ 97 invariants, build de production',
+      'scripts/release.mjs — release gouvernée : semver monotone refusant downgrade (INV-190), working tree propre exigé (INV-180), CHANGELOG journalisé',
+      'Livraison conteneurisée existante : Dockerfile app, docker-compose.yml (app + PostgreSQL), image sandbox durcie 12 toolchains (INV-215)',
+      'scripts/db-provider.mjs — bascule sqlite ⇄ PostgreSQL prouvée jusqu\u2019à l\u2019API (R7.2) ; scripts/quality-gates.mjs — gates externes locales',
+    ],
+  },
+  {
+    code: '22',
+    since: '2026-09-07',
+    evidence: [
+      'ops.ts (YAHRIA-KRN-037) — santé MESURÉE jamais supposée (INV-233) : liveness (pid/uptime/RSS), readiness avec sondes réelles (base lue, bus temps réel, sandbox backend, fabric LLM)',
+      'SLO 24 h dérivé des faits enregistrés : invocations d\u2019outils (taux de succès, p50/p95), runs d\u2019agents (complétion), événements d\u2019échec — « — (aucun échantillon) » quand vide, jamais de faux vert',
+      'API /api/yahria/ops + panneau UI « Opérations » ; runbook public/docs/OPERATIONS_RUNBOOK.md (procédures de diagnostic, incident, sauvegarde, escalade)',
+      'Frontière honnête (INV-210) : pas d\u2019alerting externe ni de collecte multi-hôte sur l\u2019hôte de preuve — les métriques portent sur le système lui-même, mesurables et rejouables',
+    ],
+  },
+  {
+    code: '23',
+    since: '2026-09-07',
+    evidence: [
+      'roadmap.ts (YAHRIA-KRN-038) — priorisation DÉRIVÉE du ledger (INV-234) : score déterministe (24−phase)×10 + 50 transverse + bonus statut, enrichi des statuts DB réels',
+      'Horizons produits canoniques : MVP (phases 0-8) / ALPHA (9-13) / BETA (14-18) / ENTERPRISE (19-23) — mapping documenté et stable',
+      'Top 8 prochaines priorités avec justification factuelle par domaine ; ledger d\u2019activation exposé avec dates et compteurs de preuves',
+      'API /api/yahria/roadmap + panneau UI « Roadmap » — aucun champ éditable à la main : la roadmap est un calcul, pas une opinion',
+    ],
+  },
 ];
 
 // Dependency graph — FORBIDDEN dependencies (DEPENDENCY_GRAPH.md §28)

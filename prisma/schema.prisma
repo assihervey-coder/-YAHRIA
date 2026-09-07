@@ -346,3 +346,98 @@ model ToolInvocation {
   createdAt   DateTime @default(now())
   tool        RegisteredTool? @relation(fields: [toolId], references: [toolId])
 }
+
+// ── DOMAIN 07 — TASK GRAPH ADVANCED (multi-agent mission orchestration) ──
+
+model Mission {
+  id          String   @id @default(cuid())
+  missionUid  String   @unique // MIS-000001
+  goal        String
+  state       String   @default("PLANNED") // PLANNED|SCHEDULED|RUNNING|COMPLETED|FAILED|BLOCKED|CANCELLED (guarded, INV-090)
+  strategy    String   @default("MANUAL") // MANUAL | DECOMPOSED (S1 heuristic decomposition)
+  traceId     String?  // mission-level trace continuity (INV-217)
+  note        String?  // governed cancellation/compensation reason (INV-092)
+  tasks       MissionTask[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model MissionTask {
+  id          String   @id @default(cuid())
+  missionId   String
+  seq         Int      // display/execution order
+  title       String
+  agentKey    String   // canonical agent assigned (INV-070) — one task, one actor (INV-224)
+  toolId      String   // registry tool invoked (INV-062 applies)
+  input       String   @default("{}") // JSON tool input
+  state       String   @default("PENDING") // PENDING|READY|RUNNING|COMPLETED|FAILED|SKIPPED|CANCELLED (guarded)
+  dependsOn   String   @default("[]") // JSON array of MissionTask ids (INV-091)
+  retries     Int      @default(0)
+  maxRetries  Int      @default(2) // retry governed (INV-092)
+  result      String?  // JSON summary
+  error       String?  // capped tail
+  runId       String?  // AgentRun id produced by the bridge
+  mission     Mission  @relation(fields: [missionId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ── DOMAIN 14 — LEARNING ENGINE (evidence-based insights) ──────────
+
+model LearningInsight {
+  id            String   @id @default(cuid())
+  insightUid    String   @unique // LRN-000001
+  kind          String   // TOOL_RELIABILITY | AGENT_PERFORMANCE | FAILURE_PATTERN | STRATEGY_HINT
+  subject       String   // toolId | agentKey | failure fingerprint
+  metric        String   @default("{}") // JSON {samples, successRate, avgMs, ...}
+  confidence    Float    @default(0.5) // derived from sample count, INV-150
+  state         String   @default("OBSERVED") // OBSERVED|VALIDATED|PROMOTED|RETIRED (governed)
+  recommendation String
+  evidenceRefs  String   @default("[]") // JSON array of backing record ids (INV-102)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ── DOMAIN 15 — SELF-EVOLUTION (governed proposals, INV-160..163) ──
+
+model EvolutionProposal {
+  id               String   @id @default(cuid())
+  proposalUid      String   @unique // EVO-000001
+  title            String
+  kind             String   // PROMPT | STRATEGY | MODEL_ROUTING | WORKFLOW | AGENT_GENOME
+  rationale        String
+  sourceInsightUid String?  // LearningInsight lineage (INV-034)
+  experiment       String?  // JSON benchmark plan/results (INV-162)
+  rollbackPlan     String   @default("") // required before PROMOTED (INV-163)
+  riskClass        String   @default("LOW") // LOW|MEDIUM|HIGH|CRITICAL
+  state            String   @default("DRAFTED") // DRAFTED|SUBMITTED|UNDER_REVIEW|APPROVED|REJECTED|SCHEDULED|PROMOTED|ROLLED_BACK (guarded, INV-162)
+  proposedBy       String   @default("HUMAN") // HUMAN | AGENT:key — proposer ≠ approver (INV-161/227)
+  decidedBy        String?  // approver identity
+  decisionReason   String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ── DOMAIN 17 — API & INTEGRATION (governed external surface) ─────
+
+model ApiKey {
+  id              String    @id @default(cuid())
+  name            String
+  keyPrefix       String    @unique // yah_live_xxxxxxxx — display + lookup only (INV-229)
+  keyHash         String    @unique // SHA-256(full key) — plaintext never stored
+  scopes          String    @default("read") // comma-separated: read | write | admin
+  rateLimitPerMin Int       @default(60)
+  revokedAt       DateTime?
+  lastUsedAt      DateTime?
+  createdAt       DateTime  @default(now())
+}
+
+// ── DOMAIN 19/20/22 — SECURITY AUDITS, QUALITY GATES, OPS SNAPSHOTS ──
+
+model OpsSnapshot {
+  id        String   @id @default(cuid())
+  kind      String   // SECURITY_AUDIT | QUALITY_GATES | HEALTH | SLO
+  ok        Boolean
+  summary   String   @default("{}") // JSON detailed report
+  createdAt DateTime @default(now())
+}
