@@ -15,9 +15,11 @@ jobs:
   gates:
     runs-on: ubuntu-latest
     env:
-      DATABASE_URL: file:./db/ci.db
+      # Chemin résolu par Prisma relativement au schéma (prisma/) — le dossier
+      # parent existe toujours dans un checkout frais, contrairement à db/.
+      DATABASE_URL: file:./ci.db
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -25,6 +27,12 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      # Le client Prisma DOIT être généré AVANT la vérification de types :
+      # @prisma/client non généré n'exporte pas PrismaClient (TS2305) et
+      # dégrade les types de tous les modèles en aval.
+      - name: Prisma client — généré avant toute vérification de types
+        run: bun run db:generate
 
       - name: GATE G7 — TypeScript (tsc --noEmit, 0 erreur exigé)
         run: bunx tsc --noEmit

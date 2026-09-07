@@ -40,6 +40,8 @@
     "node_modules",
     "db",
     "download",
-    "upload"
+    "upload",
+    "examples",
+    "skills"
   ]
 }

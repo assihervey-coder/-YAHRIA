@@ -124,3 +124,4 @@ async function main(): Promise<void> {
 }
 
 main().catch((e) => { console.error('SUITE ERROR', e); process.exit(1); });
+export {}; // module scope — evite les collisions globales avec les autres suites sous tsc
