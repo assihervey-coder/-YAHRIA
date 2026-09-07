@@ -14,6 +14,9 @@ import { StudioPanel } from '@/components/yahria/studio-panel';
 import { SupremacyPanel } from '@/components/yahria/supremacy-panel';
 import { LlmConnectorsPanel } from '@/components/yahria/llm-connectors-panel';
 import { ToolRegistryPanel } from '@/components/yahria/tool-registry-panel';
+import { AgentMissionsPanel } from '@/components/yahria/agent-missions-panel';
+import { ObservabilityPanel } from '@/components/yahria/observability-panel';
+import { PolicyConsolePanel } from '@/components/yahria/policy-console-panel';
 import { useYahriaRealtime } from '@/hooks/use-yahria-realtime';
 import { Loader2, ShieldCheck } from 'lucide-react';
 
@@ -103,6 +106,9 @@ export default function Home() {
                 ['supremacy', 'Souveraineté R8'],
                 ['llm', 'Connecteurs IA'],
                 ['tools', 'Registre des outils'],
+                ['missions', 'Missions agents'],
+                ['observability', 'Observabilité'],
+                ['policy-console', 'Console politiques'],
                 ['command', 'Centre de commande'],
                 ['cognitive', 'Raisonnement hybride'],
                 ['agents', 'Agent OS'],
@@ -124,6 +130,9 @@ export default function Home() {
             <TabsContent value="supremacy" className="mt-4"><SupremacyPanel /></TabsContent>
             <TabsContent value="llm" className="mt-4"><LlmConnectorsPanel /></TabsContent>
             <TabsContent value="tools" className="mt-4"><ToolRegistryPanel /></TabsContent>
+            <TabsContent value="missions" className="mt-4"><AgentMissionsPanel /></TabsContent>
+            <TabsContent value="observability" className="mt-4"><ObservabilityPanel /></TabsContent>
+            <TabsContent value="policy-console" className="mt-4"><PolicyConsolePanel /></TabsContent>
             <TabsContent value="command" className="mt-4"><CommandCenter data={data} /></TabsContent>
             <TabsContent value="cognitive" className="mt-4"><CognitiveConsole /></TabsContent>
             <TabsContent value="agents" className="mt-4"><AgentPanel agents={data.agents} onChanged={refresh} /></TabsContent>

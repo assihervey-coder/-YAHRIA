@@ -106,4 +106,14 @@ export const REALTIME_EVENT_TYPES = {
   TOOL_INVOKED: 'tool.invoked',
   TOOL_DENIED: 'tool.denied',
   TOOL_AUTHORIZED: 'tool.authorized',
+  // Agent↔Tool bridge (Domain 05×09 — canonical agents invoke governed tools)
+  AGENT_MISSION_STARTED: 'agent.mission.started',
+  AGENT_MISSION_COMPLETED: 'agent.mission.completed',
+  AGENT_MISSION_FAILED: 'agent.mission.failed',
+  // Observability (Domain 11 — replay/forensics, R13)
+  TRACE_REPLAYED: 'trace.replayed',
+  // Policy Console (Domain 12 — governed RBAC management, R13)
+  POLICY_RULE_CREATED: 'policy.rule.created',
+  POLICY_RULE_TOGGLED: 'policy.rule.toggled',
+  POLICY_SIMULATED: 'policy.simulated',
 } as const;

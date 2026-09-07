@@ -83,6 +83,30 @@ export const DOMAIN_ACTIVATIONS: DomainActivation[] = [
       'Frontière honnête (INV-210) : démon Docker absent sur l hôte de preuve — backend conteneur branché et gardé, exécution conteneur non démontrée ici',
     ],
   },
+  {
+    code: '11',
+    since: '2026-09-07',
+    evidence: [
+      'observability.ts (YAHRIA-KRN-028) — index des traces multi-sources, timeline ordonnée assemblée depuis Evidence/ToolInvocation/AgentRun/Execution/PolicyDecision/SystemEvent',
+      'Replay LECTURE SEULE prouvé (INV-218) : reconstruction des faits + re-validation S1 des inputs enregistrés contre les contrats ACTUELS (détection de drift), zéro mutation mesurée',
+      'Forensics (INV-110) : recomputation des empreintes SHA-256 des preuves d une trace — altérations signalées ; rapport de drift registre ↔ historique',
+      'Socle événementiel : bus realtime (fan-out WS), journal SystemEvent, chaîne de preuves hash-chaînée — préexistant et désormais rejouable',
+      'Suite R13 : timeline mission agent réelle (sortie uname vérifiée), replay 0 mutation mesurée, chaîne intègre, 0 drift',
+      'API /api/yahria/observability + panneau UI « Observabilité » (index, timeline, replay, drift)',
+    ],
+  },
+  {
+    code: '12',
+    since: '2026-09-07',
+    evidence: [
+      'policy-console.ts (YAHRIA-KRN-029) — gestion gouvernée : règles POL-C-* avec portée acteur (actorType/actorId — RBAC fin), mutations justifiées et scellées en preuves POLICY (INV-121)',
+      'Verrou constitutionnel prouvé (INV-219) : POL-001..POL-012 intouchables depuis la console (refus testé) ; seules POL-C-*/POL-AUTH-* sont mutables',
+      'Simulateur sans effet de bord prouvé (INV-220) : ALLOW/DENY simulés par acteur, 0 décision persistée (comptage avant/après vérifié)',
+      'Analyse d\u2019impact avant création : bascules d\u2019autorisation simulées outil par outil (brouillon jamais persisté — vérifié)',
+      'RBAC fin prouvé : règle POL-C- Allow sideeffect.sandbox.cli.run pour AGENT:tester seul — humain reste DENY (POL-012), tester exécute réellement ; toggle off → re-DENY',
+      'evaluatePolicy étendu (rétrocompatible) : portée acteur optionnelle par règle ; API /api/yahria/policy-console + panneau UI « Console politiques »',
+    ],
+  },
 ];
 
 // Dependency graph — FORBIDDEN dependencies (DEPENDENCY_GRAPH.md §28)

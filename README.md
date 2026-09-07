@@ -3,7 +3,7 @@
 > **Système d'intelligence logicielle autonome, sécurisé, gouverné et piloté par preuves.**
 >
 > Implémentation exécutable de la constitution YAHRIA : un Agent OS à raisonnement
-> hybride (S1 déterministe / S2 LLM / cascade), gouverné par 47 invariants globaux,
+> hybride (S1 déterministe / S2 LLM / cascade), gouverné par 83 invariants globaux,
 > des machines à états gardées, une politique *deny-by-default* et un moteur de
 > preuves inviolable par chaînage SHA-256.
 
@@ -52,7 +52,7 @@ CONSTITUTION (LEVEL 0)
    ↓
 ROOT CONTRACT (LEVEL 1)
    ↓
-GLOBAL INVARIANTS — 47 invariants, INV-001 → INV-211 (LEVEL 2)
+GLOBAL INVARIANTS — 83 invariants, INV-001 → INV-220 (LEVEL 2)
    ↓
 ARCHITECTURE DECISIONS (LEVEL 3)
    ↓
@@ -81,7 +81,7 @@ Règles structurelles clés :
 |---|---|
 | `types.ts` | Types canoniques partagés (états, verdicts, preuves, politiques) |
 | `state-machines.ts` | Machines à états gardées — toute transition non déclarée est rejetée (422) |
-| `invariants.ts` | Les 47 invariants globaux + moteur de vérification |
+| `invariants.ts` | Les 83 invariants globaux + moteur de vérification |
 | `domains.ts` | Les 24 domaines canoniques + graphe de dépendances + dépendances interdites |
 | `policy-engine.ts` | Contrôle de politique *deny-by-default* (POL-001…), précédence INV-120 |
 | `evidence-engine.ts` | Calcul d'intégrité SHA-256, chaînage `LINEAGE`, verdicts |
@@ -108,6 +108,9 @@ Règles structurelles clés :
 | `live-proof.ts` | **R11** — boucle gouvernée self-heal : POL-009, budget borné, diagnostic fautif, réparation IA, verdicts PROVED/PARTIAL/UNPROVED |
 | `tool-registry.ts` | **R12** — **registre des outils gouvernés** (YAHRIA-KRN-025, D.09) : quatre portes (enregistrement → autorisation INV-062 → contrat S1 strict → exécution bornée), versions semver monotones INV-190, grille d'autorisation vivante POL-006/011/012, autorisations gouvernées révocables POL-AUTH-* |
 | `tool-executor.ts` | **R12** — exécuteur borné outils (YAHRIA-KRN-026) : timeout INV-042, env scrubé INV-213, argv whitelisté uniquement — jamais les internals du sandbox (§28) |
+| `agent-tools.ts` | **R13** — **passerelle agents ↔ registre** (YAHRIA-KRN-027, D.05×D.09) : les agents canoniques invoquent de VRAIS outils — porte capacité INV-071 AVANT porte politique INV-062 (INV-216), matrice de droits dérivée de la constitution (`TOOL_CAPABILITY_MAP`), missions sous trace unique INV-217, verdicts honnêtes COMPLETED/PARTIAL/BLOCKED/FAILED |
+| `observability.ts` | **R13** — **observabilité d'exécution** (YAHRIA-KRN-028, D.11) : index de traces multi-sources, timeline ordonnée, replay LECTURE SEULE INV-218 (re-hachage INV-110 + re-contrat S1 = détection de drift), forensics d'empreintes |
+| `policy-console.ts` | **R13** — **console de politiques** (YAHRIA-KRN-029, D.12) : RBAC fin par acteur (règles POL-C-* avec actorType/actorId), verrou constitutionnel INV-219 (POL-001..012 intouchables), simulateur + analyse d'impact SANS effet de bord INV-220, mutations justifiées scellées INV-121 |
 
 ## API `/api/yahria/*`
 
@@ -115,7 +118,7 @@ Règles structurelles clés :
 |---|---|
 | `GET system` | État du système, bootstrap, santé constitutionnelle |
 | `POST / GET cognitive` | Exécuter la boucle cognitive / lire les traces |
-| `GET agents` | Registre des 9 agents + capacités + état |
+| `GET agents` | Registre des 9 agents + capacités + état ; **R13** : `toolGrants` (matrice dérivée des outils invocables par agent) · `POST action:mission` — mission gouvernée : l'agent invoque de vrais outils via les deux portes INV-216/062 |
 | `GET executions` | Fabric d'exécution, sandbox, échecs F001–F025 |
 | `POST evidence` | Cycle de preuve : `capture → verify → seal` (SHA-256 chaîné) |
 | `POST policy` | Évaluer une décision contre le contrôle de politique |
@@ -128,14 +131,21 @@ Règles structurelles clés :
 | `GET / POST supremacy` | **R8** — catalogue + 12 capacités de souveraineté : preuves embarquées, Merkle, blast radius, débat, time-travel, fuzzing, self-heal, attestations |
 | `GET / POST llm` | **R10** — fabric LLM : statut fournisseurs (GET), sonde de connectivité + réordonnancement runtime (POST) |
 | `GET / POST tools` | **R12** — **registre des outils** (D.09) : registre + matrice d'autorisation vivante (GET) ; register / discover / invoke / authorize (POST) — chaque invocation re-évalue INV-062, chaque décision persistée (PolicyDecision) + preuve TOOL scellée |
+| `GET / POST observability` | **R13** — **observabilité** (D.11) : index des traces / timeline + forensics + intégrité (GET ?traceId=…) ; replay LECTURE SEULE (INV-218) + rapport de drift contrat (POST) |
+| `GET / POST policy-console` | **R13** — **console de politiques** (D.12) : règles + verrou constitutionnel + décisions récentes (GET) ; create / toggle / simulate / impact (POST) — mutations gouvernées, simulation sans persistance (INV-220) |
 | `POST studio/runs/[id]/execute` | **R11/R11.2** — **preuve live** : install → syntaxe → build → lancement sandbox + sondes HTTP (stacks serveur) **ou compilation + exécution CLI avec capture du marqueur `YAHRIA-LINK-OK`** (C, C++, C#, Fortran) → self-heal borné → `SEALED → LIVE_PROVED` |
 | `WS /ws/yahria` | **Flux temps réel** (WebSocket, domaine 11) — handshake `hello → snapshot → events` |
 
 ## YAHRIA Mission Control (UI)
 
-13 panneaux : **Studio autonome · Souveraineté R8 · Connecteurs IA · Registre des outils · Centre de commande · Raisonnement hybride ·
+16 panneaux : **Studio autonome · Souveraineté R8 · Connecteurs IA · Registre des outils · Missions agents · Observabilité · Console politiques · Centre de commande · Raisonnement hybride ·
 Agent OS · Graphe de tâches · Exécutions · Preuves · Politiques · Blueprint ·
-Temps réel**. Le panneau **Registre des outils** (R12, D.09) affiche la grille
+Temps réel**. Le panneau **Missions agents** (R13, KRN-027) fait invoquer aux
+agents canoniques de vrais outils gouvernés (deux portes INV-216, matrice de
+droits dérivée, preuves scellées) ; **Observabilité** (R13, KRN-028) assemble
+les traces multi-sources avec replay lecture seule et forensics ; **Console
+politiques** (R13, KRN-029) gère le RBAC fin des outils avec verrou
+constitutionnel et simulateur sans effet de bord. Le panneau **Registre des outils** (R12, D.09) affiche la grille
 INV-062 vivante (REGISTERED ≠ AUTHORIZED) : formulaires générés depuis les
 contrats, démonstrateur autorisation/révocation side-effect, journal des
 invocations gouvernées. Le Studio autonome couvre le cycle complet : soumission
@@ -229,7 +239,10 @@ chaque entrée liste les artefacts vérifiables (modules noyau, runs
 façon **monotone et idempotente** (`NOT_STARTED → IMPLEMENTING`, jamais
 l'inverse — conformément à `UNKNOWN ≠ SUCCESS`). Le registre est exposé dans
 `GET /api/yahria/system` (champ `domainActivations`) pour l'auditabilité.
-État courant : **11/24 domaines actifs** ; les 13 restants restent honnêtement
+R12 a activé **D.09 (Tool Registry Engine)** ; R13 a activé **D.11 (Execution
+Observability)** — traces, replay lecture seule, forensics — et **D.12 (Policy
+Console)** — RBAC fin, verrou constitutionnel, simulation sans effet de bord.
+État courant : **14/24 domaines actifs** ; les 10 restants restent honnêtement
 `NOT_STARTED` tant qu'aucune preuve n'est archivée.
 
 ## Les 2 fichiers manquants — restaurés
@@ -253,8 +266,8 @@ du contrat 00 en fichiers racine autonomes.
 .
 ├── src/
 │   ├── app/                    # Next.js App Router (UI + API)
-│   │   ├── api/yahria/         # 7 endpoints constitutionnels + studio (5 routes)
-│   │   └── page.tsx            # Mission Control (13 panneaux)
+│   │   ├── api/yahria/         # 10 endpoints constitutionnels + studio (5 routes)
+│   │   └── page.tsx            # Mission Control (16 panneaux)
 │   ├── components/yahria/      # Panneaux Mission Control + Studio autonome
 │   ├── hooks/                  # use-yahria-realtime (WS)
 │   └── lib/yahria/             # ⭐ Noyau constitutionnel (15 modules + realtime)

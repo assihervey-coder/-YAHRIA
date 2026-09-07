@@ -89,6 +89,11 @@ export const INVARIANTS: Invariant[] = [
   { id: 'INV-213', family: 'SECURITY', title: 'Credentials Never Exposed', rule: 'Provider API keys stay server-side; telemetry exposes masked keys only.' },
   { id: 'INV-214', family: 'EXECUTION', title: 'Polyglot Proof Parity', rule: 'Every requested stack — including C, C++, C#, Fortran — goes through the SAME sandbox proof gates (build + run + output marker); no language is second-class, no stack ships unverified.' },
   { id: 'INV-215', family: 'SECURITY', title: 'Container Isolation When Docker', rule: 'When YAHRIA_SANDBOX_BACKEND=docker, every sandbox step runs in a hardened container: no network, read-only rootfs, all capabilities dropped, cpu/memory/pids bounded. The process backend remains an honestly documented weaker isolation.' },
+  { id: 'INV-216', family: 'AGENT', title: 'Capability Gate Precedes Tool Authorization', rule: 'A canonical agent may only invoke a tool mapped to one of its declared capabilities (INV-071 × INV-062 composition). The capability gate is evaluated BEFORE the policy gate; a capability denial never reaches the policy plane and never executes.' },
+  { id: 'INV-217', family: 'OBSERVABILITY', title: 'Mission Trace Continuity', rule: 'Every agent mission runs under a unique traceId propagated to each tool invocation, policy decision, evidence record and agent run — no orphan action, the full chain is replayable.' },
+  { id: 'INV-218', family: 'OBSERVABILITY', title: 'Replay Is Read-Only', rule: 'Replaying a trace reconstructs recorded facts (timeline, hashes, contract re-validation); it never re-executes side effects and never mutates production state.' },
+  { id: 'INV-219', family: 'POLICY', title: 'Constitutional Rules Are Locked', rule: 'Seed rules POL-001..POL-012 cannot be deleted, deactivated or weakened from the console; only governed rules (POL-C-*, POL-AUTH-*) are mutable, always with an explicit auditable reason.' },
+  { id: 'INV-220', family: 'POLICY', title: 'Simulation Is Side-Effect Free', rule: 'Policy simulation and impact analysis never persist decisions, never create rules and never flip live authorization — a dry-run stays a dry-run.' },
 ];
 
 export const INVARIANT_FAMILIES = Array.from(new Set(INVARIANTS.map((i) => i.family)));

@@ -2,6 +2,12 @@
 // YAHRIA KERNEL — Policy Control Plane (Domain 12)
 // Doc ID: YAHRIA-KRN-004 | Invariants: INV-120, INV-121, INV-122, INV-123, INV-133
 // Precedence: POLICY DENY > MODEL > AGENT > TOOL > LOCAL CONVENIENCE
+//
+// R13 — fine-grained RBAC: a rule MAY scope itself to an actor
+// (actorType and/or exact actorId). Rules without actor scope match
+// every caller (backwards-compatible). Actor-scoped rules let the
+// Policy Console grant e.g. `sideeffect.sandbox.cli.run` to the
+// tester agent ALONE while every other caller keeps hitting POL-012.
 // ═══════════════════════════════════════════════════════════════
 
 import type { PolicyRequest, PolicyEvaluation, PolicyEffect } from './types';
@@ -17,6 +23,8 @@ export interface PolicyRuleDef {
   active?: boolean;        // optional enable switch (undefined = active)
   reason: string;
   version: string;
+  actorType?: 'HUMAN' | 'AGENT' | 'SYSTEM' | 'TOOL' | 'MODEL'; // optional RBAC actor scope
+  actorId?: string;        // optional exact actor identity scope
 }
 
 // Seed canonical policy set — DENY BY DEFAULT (INV-052, INV-133)
@@ -42,17 +50,22 @@ export const DEFAULT_REASON = 'INV-052/INV-133: no explicit policy matched → D
 export function evaluatePolicy(request: PolicyRequest, rules: PolicyRuleDef[]): PolicyEvaluation {
   const sorted = [...rules].filter((r) => r.active !== false).sort((a, b) => a.priority - b.priority);
   for (const rule of sorted) {
+    // RBAC actor scope — a rule declaring actorType/actorId only matches that caller.
+    if (rule.actorType !== undefined && rule.actorType !== request.actorType) continue;
+    if (rule.actorId !== undefined && rule.actorId !== request.actorId) continue;
     const actionMatch = rule.action.endsWith('*')
       ? request.action.startsWith(rule.action.slice(0, -1))
       : rule.action === request.action;
     const resourceMatch = rule.resource === '*' || rule.resource === request.resource ||
       (rule.resource.endsWith('.*') && request.resource.startsWith(rule.resource.slice(0, -1)));
     if (actionMatch && resourceMatch) {
+      const actorScope = rule.actorType !== undefined || rule.actorId !== undefined
+        ? `, actor ${rule.actorType ?? '*'}:${rule.actorId ?? '*'}` : '';
       return {
         effect: rule.effect,
         matchedRule: rule.ruleId,
         reason: rule.reason,
-        precedence: `POLICY ${rule.effect} > MODEL > AGENT > TOOL > LOCAL (rule ${rule.ruleId} v${rule.version}, priority ${rule.priority})`,
+        precedence: `POLICY ${rule.effect} > MODEL > AGENT > TOOL > LOCAL (rule ${rule.ruleId} v${rule.version}, priority ${rule.priority}${actorScope})`,
       };
     }
   }

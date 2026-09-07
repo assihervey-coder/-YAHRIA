@@ -52,6 +52,11 @@ export function setSeqStart(n: number) {
   if (n > seq) seq = n;
 }
 
+/** Advance the counter (used to skip a collided UID — gaps are harmless, collisions are not). */
+export function advanceSeq(by = 1): void {
+  seq += Math.max(1, by);
+}
+
 function nextUid(category: EvidenceCategory): string {
   seq += 1;
   return `EV-${category}-${String(seq).padStart(6, '0')}`;

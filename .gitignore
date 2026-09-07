@@ -81,3 +81,4 @@ __pycache__/
 
 # Logs locaux
 dev-pg.log
+tool-results/

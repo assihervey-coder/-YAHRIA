@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { ensureBootstrapped } from '@/lib/yahria/bootstrap';
 import { CANONICAL_AGENTS, checkCapability } from '@/lib/yahria/agent-os';
+import { agentGrantsFor, grantMatrix, runAgentMission } from '@/lib/yahria/agent-tools';
 import { captureEvidence } from '@/lib/yahria/evidence-engine';
 import { evaluatePolicy, SEED_POLICY_RULES } from '@/lib/yahria/policy-engine';
 import type { AgentKey } from '@/lib/yahria/types';
@@ -10,7 +11,12 @@ export async function GET() {
   try {
     await ensureBootstrapped();
     const agents = await db.agent.findMany({ include: { runs: { orderBy: { startedAt: 'desc' }, take: 5 } }, orderBy: { key: 'asc' } });
-    return NextResponse.json({ ok: true, agents, canonical: CANONICAL_AGENTS });
+    return NextResponse.json({
+      ok: true, agents, canonical: CANONICAL_AGENTS,
+      // Derived grant matrix — what each canonical agent MAY invoke (INV-071 × INV-062)
+      toolGrants: Object.fromEntries(CANONICAL_AGENTS.map((a) => [a.key, agentGrantsFor(a.key)])),
+      grantMatrix: grantMatrix(),
+    });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
@@ -20,6 +26,27 @@ export async function POST(req: Request) {
   try {
     await ensureBootstrapped();
     const body = await req.json().catch(() => ({}));
+
+    // ── R13 — governed agent mission: canonical agent invokes REAL tools ──
+    if (String(body.action ?? '') === 'mission') {
+      const toolCalls = Array.isArray(body.toolCalls)
+        ? (body.toolCalls as unknown[]).slice(0, 5).map((c) => {
+            const call = (c ?? {}) as { toolId?: unknown; input?: unknown };
+            return {
+              toolId: String(call.toolId ?? ''),
+              input: (call.input && typeof call.input === 'object' && !Array.isArray(call.input)
+                ? call.input : {}) as Record<string, unknown>,
+            };
+          })
+        : [];
+      const mission = await runAgentMission({
+        agentKey: String(body.agentKey ?? ''),
+        mission: String(body.mission ?? ''),
+        toolCalls,
+      });
+      return NextResponse.json({ ok: true, mission }); // BLOCKED/FAILED are governed facts, not HTTP errors
+    }
+
     const agentKey = String(body.agentKey ?? '') as AgentKey;
     const capability = String(body.capability ?? 'genome.query');
     const agent = CANONICAL_AGENTS.find((a) => a.key === agentKey);

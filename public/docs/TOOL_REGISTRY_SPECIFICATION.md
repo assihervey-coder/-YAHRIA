@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| **Doc ID** | YAHRIA-KRN-025 (noyau) / YAHRIA-KRN-026 (exécuteur borné) |
-| **Version** | 1.0.0 |
+| **Doc ID** | YAHRIA-KRN-025 (noyau) / YAHRIA-KRN-026 (exécuteur borné) / YAHRIA-KRN-027 (passerelle agents, R13) |
+| **Version** | 1.1.0 |
 | **Domaine** | D.09 — Tool Registry Engine |
 | **Modules** | `src/lib/yahria/tool-registry.ts` · `src/lib/yahria/tool-executor.ts` |
 | **Endpoint** | `GET/POST /api/yahria/tools` |
@@ -39,7 +39,7 @@ Avant R12, les agents YAHRIA disposaient de capacités internes (raisonnement, g
 
 L'autorisation d'un outil SIDE_EFFECT est une **mutation gouvernée** : elle crée une règle `POL-AUTH-*` nommée, prioritaire sur POL-012, traçable (événement `tool.authorized`) et **révocable** en tout instant. La priorité 4 < 5 garantit que l'ALLOW explicite bat le DENY générique — et la révocation rétablit le refus constitutionnel.
 
-## 4. Registre built-in (5 outils réels)
+## 4. Registre built-in (7 outils réels)
 
 | toolId | Classe | Handler | Preuve |
 |---|---|---|---|
@@ -47,6 +47,8 @@ L'autorisation d'un outil SIDE_EFFECT est une **mutation gouvernée** : elle cr�
 | `studio.runs.list` | READ_ONLY | dernières livraisons Studio (limit 1-20) | contrat testé (limit 500 → refusé) |
 | `sandbox.toolchains.detect` | READ_ONLY | sonde INV-190 des toolchains hôte | gcc détecté en suite live |
 | `evidence.recent.list` | READ_ONLY | chaîne de preuves hash-chaînée | invocation réelle |
+| `constitution.invariants.list` (R13) | READ_ONLY | invariants INV-xxx filtrables par famille | INV-219/220 lus par le reviewer en suite R13 |
+| `policy.decisions.recent` (R13) | READ_ONLY | dernières décisions ALLOW/DENY/REQUIRE_APPROVAL | auditées par l'agent security en suite R13 |
 | `sandbox.cli.run` | **SIDE_EFFECT** | sondes whitelistées : `uname` / `uptime` / `disk` | DENY par défaut → autorisé → `Linux` capturé → révoqué |
 
 Aucune argv libre ne traverse la porte : l'outil `sandbox.cli.run` n'accepte qu'un enum de sondes prédéfinies — l'injection de commande est structurellement impossible.
@@ -67,8 +69,19 @@ Chaque invocation produit :
 
 `bun run scripts/r12-tool-registry-tests.ts` exécute 15 scénarios réels contre l'API : registre seedé, découverte, registration + immutabilité des versions + refus de downgrade, REQUIRE_APPROVAL outil fantôme, invocation READ_ONLY réelle avec preuve scellée, deux refus de contrat stricts, démonstration complète INV-062 (DENY → autorisation gouvernée → ALLOW + uname réel → révocation → re-DENY), handler déclaratif honnête, comptage exact du journal (7 : l'outil fantôme est refusé *avant* enregistrement d'invocation — seule la PolicyDecision trace).
 
-## 8. Frontières honnêtes
+## 8. Passerelle agents ↔ registre (R13, KRN-027)
 
-- Les autorisations POL-AUTH-* vivent en DB (persistées) mais **aucune UI de gestion fine par rôle** (RBAC sur les outils) n'existe encore — D.12 approfondira.
+`src/lib/yahria/agent-tools.ts` branché les agents canoniques (D.05) sur le registre : ils **invoquent de vrais outils**. Deux portes dans l'ordre strict (INV-216) :
+
+1. **Porte capacité (INV-071)** — l'outil doit mapper une capacité déclarée de l'agent via `TOOL_CAPABILITY_MAP` ; la matrice de droits est **dérivée** de la constitution (`agentGrantsFor`), jamais listée à la main. Un refus de capacité n'atteint JAMAIS le plan politique (aucune invocation, aucune PolicyDecision).
+2. **Porte politique (INV-062)** — `invokeTool` complet : autorisation vivante, contrat S1, exécution bornée, preuve scellée.
+
+Grants dérivés (R13) : tester→`sandbox.cli.run` · architecte/coder/reviewer→`system.domains.list`+`sandbox.toolchains.detect` · explorer→+`studio.runs.list` · reviewer→+`constitution.invariants.list` · debugger/security→`evidence.recent.list` · security→+`policy.decisions.recent` · planner/vérifier→aucun (honnêteté : leurs capacités task.*/acceptance.* n'ont pas d'outil mappé).
+
+Chaque **mission** (`runAgentMission`) tourne sous une trace unique propagée à chaque invocation, décision et preuve (INV-217), persiste un AgentRun (STARTED→COMPLETED/BLOCKED/FAILED) et rend un verdict honnête : COMPLETED / PARTIAL / BLOCKED (refus politique) / FAILED / REJECTED. Vérifié au navigateur : mission architecte 2/2 outils réels, preuves EV-TOOL scellées.
+
+## 9. Frontières honnêtes
+
+- ~~Les autorisations POL-AUTH-* vivent en DB (persistées) mais **aucune UI de gestion fine par rôle** (RBAC sur les outils) n'existe encore~~ → **livré en R13** : console de politiques avec portée acteur (voir POLICY_CONSOLE_SPECIFICATION.md, INV-219/220).
 - Le timeout outil est global (10 s) ; un budget CPU/mémoire par outil (cgroups) attend le backend conteneur D.10.
 - Les outils déclaratifs n'ont pas de bridge plugin externe encore (SDK D.17).

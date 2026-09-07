@@ -190,6 +190,51 @@ export const BUILT_IN_TOOLS: (ToolDef & { handler: ToolHandler })[] = [
     },
   },
   {
+    toolId: 'constitution.invariants.list', name: 'Invariants constitutionnels', version: '1.0.0',
+    description: 'Liste les invariants globaux (INV-xxx) du contrat constitutionnel, filtrables par famille — la constitution lisible par les agents.',
+    ownerDomain: '00', riskClass: 'READ_ONLY', executable: true,
+    contract: {
+      type: 'object',
+      properties: {
+        family: { type: 'string', description: 'Filtrer par famille (ex. SECURITY, POLICY)', maxLength: 40 },
+        limit: { type: 'number', description: 'Nombre max (1-100)', minimum: 1, maximum: 100 },
+      },
+      required: [],
+    },
+    handler: async (input) => {
+      const { INVARIANTS } = await import('./invariants');
+      const family = typeof input.family === 'string' && input.family.length > 0 ? input.family : null;
+      const limit = Math.min(Math.max(Number(input.limit ?? 100), 1), 100);
+      return INVARIANTS
+        .filter((i) => !family || i.family.toUpperCase() === family.toUpperCase())
+        .slice(0, limit)
+        .map((i) => ({ id: i.id, family: i.family, title: i.title, rule: i.rule }));
+    },
+  },
+  {
+    toolId: 'policy.decisions.recent', name: 'Décisions de politique récentes', version: '1.0.0',
+    description: 'Dernières décisions du plan de contrôle de politique (ALLOW/DENY/REQUIRE_APPROVAL) — lecture seule, transparence INV-123.',
+    ownerDomain: '12', riskClass: 'READ_ONLY', executable: true,
+    contract: {
+      type: 'object',
+      properties: {
+        effect: { type: 'string', description: 'Filtrer par effet', enum: ['ALLOW', 'DENY', 'REQUIRE_APPROVAL'] },
+        limit: { type: 'number', description: 'Nombre max (1-50)', minimum: 1, maximum: 50 },
+      },
+      required: [],
+    },
+    handler: async (input) => {
+      const effect = typeof input.effect === 'string' && ['ALLOW', 'DENY', 'REQUIRE_APPROVAL'].includes(input.effect) ? input.effect : null;
+      const limit = Math.min(Math.max(Number(input.limit ?? 15), 1), 50);
+      const rows = await db.policyDecision.findMany({
+        where: effect ? { effect } : {},
+        orderBy: { createdAt: 'desc' }, take: limit,
+        select: { ruleId: true, request: true, effect: true, reason: true, decidedBy: true, createdAt: true },
+      });
+      return rows;
+    },
+  },
+  {
     toolId: 'sandbox.cli.run', name: 'Commande de diagnostic sandbox', version: '1.0.0',
     description: 'Exécute une commande de diagnostic WHITELISTÉE dans le workspace sandbox. SIDE_EFFECT : refusée par défaut (INV-062) — autorisation gouvernée explicite requise.',
     ownerDomain: '10', riskClass: 'SIDE_EFFECT', executable: true,
@@ -281,8 +326,16 @@ export async function authorizeInvoke(toolId: string, callerType: string, caller
   const row = await db.registeredTool.findUnique({ where: { toolId } });
   const rules = await db.policyRule.findMany({ where: { active: true } });
   const ruleDefs: PolicyRuleDef[] = rules.map((r) => {
-    const cond = JSON.parse(r.condition) as { action: string; resource: string };
-    return { ruleId: r.ruleId, name: r.name, effect: r.effect as PolicyRuleDef['effect'], scope: r.scope, action: cond.action, resource: cond.resource, priority: r.priority, active: r.active, reason: r.name, version: r.version };
+    const cond = JSON.parse(r.condition) as { action: string; resource: string; actorType?: string; actorId?: string };
+    return {
+      ruleId: r.ruleId, name: r.name, effect: r.effect as PolicyRuleDef['effect'], scope: r.scope,
+      action: cond.action, resource: cond.resource, priority: r.priority, active: r.active,
+      reason: r.name, version: r.version,
+      // fine-RBAC actor scope MUST survive the DB→engine hop (R13 — a scoped
+      // rule that loses its scope becomes an unscoped grant: privilege leak)
+      actorType: cond.actorType as PolicyRuleDef['actorType'],
+      actorId: cond.actorId,
+    };
   });
   if (!row || !row.active) {
     const auth0 = evaluatePolicy({ actorType: callerType as 'HUMAN' | 'AGENT' | 'SYSTEM', actorId: callerId, action: 'tool.execute', resource: `unregistered.${toolId}` }, ruleDefs);
@@ -340,7 +393,7 @@ export async function invokeTool(params: {
   await db.policyDecision.create({
     data: {
       ruleId: auth.matchedRule,
-      request: JSON.stringify({ actorType: callerType, actorId: callerId, action: 'tool.execute', resource: auth.resourceRequested }),
+      request: JSON.stringify({ actorType: callerType, actorId: callerId, action: 'tool.execute', resource: auth.resourceRequested, trace: params.traceId ?? null }),
       effect: auth.effect, reason: auth.reason, decidedBy: 'POLICY_ENGINE',
     },
   });
