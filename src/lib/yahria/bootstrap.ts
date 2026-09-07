@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { db } from '@/lib/db';
-import { DOMAINS } from './domains';
+import { DOMAINS, DOMAIN_ACTIVATIONS } from './domains';
 import { CANONICAL_AGENTS } from './agent-os';
 import { SEED_POLICY_RULES } from './policy-engine';
 
@@ -24,6 +24,17 @@ export async function bootstrap(): Promise<{ seeded: boolean; counts: Record<str
         isCore: d.isCore,
         status: d.phase <= 8 ? 'IMPLEMENTING' : 'NOT_STARTED',
       })),
+    });
+  }
+
+  // Domain activation ledger — application IDEMPOTENTE à chaque bootstrap :
+  // la DB déjà seedée rattrape le registre des preuves. Montée MONOTONE
+  // NOT_STARTED → IMPLEMENTING uniquement (jamais de rétrogradation ;
+  // la clôture DONE exigera une décision gouvernée D.6 avec preuves).
+  for (const a of DOMAIN_ACTIVATIONS) {
+    await db.domain.updateMany({
+      where: { code: a.code, status: 'NOT_STARTED' },
+      data: { status: 'IMPLEMENTING' },
     });
   }
 

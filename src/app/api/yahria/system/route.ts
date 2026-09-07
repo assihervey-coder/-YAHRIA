@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { bootstrap } from '@/lib/yahria/bootstrap';
 import { db } from '@/lib/db';
 import { ALL_MACHINES } from '@/lib/yahria/state-machines';
-import { DOMAINS, GOVERNANCE_PLANES } from '@/lib/yahria/domains';
+import { DOMAINS, GOVERNANCE_PLANES, DOMAIN_ACTIVATIONS } from '@/lib/yahria/domains';
 import { BOOTSTRAP_SEQUENCE } from '@/lib/yahria/agent-os';
 
 export async function GET() {
@@ -26,6 +26,7 @@ export async function GET() {
       boot,
       machines: ALL_MACHINES,
       domains: domains.length ? domains : DOMAINS,
+      domainActivations: DOMAIN_ACTIVATIONS,
       governance: GOVERNANCE_PLANES,
       bootstrapSequence: BOOTSTRAP_SEQUENCE,
       agents, tasks, executions, evidence, failures, traces, memories,

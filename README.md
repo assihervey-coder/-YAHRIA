@@ -212,6 +212,20 @@ valider sur un hôte Docker réel) :
   CPU/RAM/PIDs bornés (INV-215) — l'isolation conteneur remplace le
   confinement process par défaut, plus faible, documenté honnêtement.
 
+### Statut des domaines — activation fondée sur preuves
+
+La conséquence directe de R11/R11.2/R11.3 : **D.08 (Execution Fabric)** et
+**D.10 (Sandbox Engine)** sont officiellement passés de `NOT_STARTED` à
+`IMPLEMENTING`. La bascule n'est pas un libellé manuel mais un **registre
+d'activation fondé sur preuves** (`DOMAIN_ACTIVATIONS` dans `domains.ts`) :
+chaque entrée liste les artefacts vérifiables (modules noyau, runs
+`LIVE_PROVED`, spécification publiée) et le bootstrap applique la montée de
+façon **monotone et idempotente** (`NOT_STARTED → IMPLEMENTING`, jamais
+l'inverse — conformément à `UNKNOWN ≠ SUCCESS`). Le registre est exposé dans
+`GET /api/yahria/system` (champ `domainActivations`) pour l'auditabilité.
+État courant : **11/24 domaines actifs** ; les 13 restants restent honnêtement
+`NOT_STARTED` tant qu'aucune preuve n'est archivée.
+
 ## Les 2 fichiers manquants — restaurés
 
 L'audit du corpus original avait révélé que la spec **Hybrid Reasoning** (le nom

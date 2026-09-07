@@ -39,6 +39,41 @@ export const DOMAINS: DomainDef[] = [
   { code: '23', name: 'Product Evolution & Roadmap', purpose: 'MVP → Alpha → Beta → Enterprise progression', phase: 23, isCore: false, subdomains: ['MVP', 'Alpha', 'Beta', 'Enterprise', 'Scaling', 'Plugin Ecosystem', 'API Ecosystem', 'Marketplace', 'Long-Term Evolution'] },
 ];
 
+// ── ACTIVATION LEDGER — statuts fondés sur PREUVES (UNKNOWN ≠ SUCCESS) ──
+// Un domaine entre ici UNIQUEMENT lorsque son implémentation existe dans le
+// noyau ET qu'une preuve vérifiable est archivée (tests, runs LIVE_PROVED,
+// parité, spécification publiée). Le bootstrap applique l'activation de façon
+// MONOTONE : NOT_STARTED → IMPLEMENTING, jamais l'inverse (rétrogradation ou
+// clôture DONE exigent une décision gouvernée D.6 avec preuves).
+export interface DomainActivation {
+  code: string;
+  since: string;      // date d'activation (preuve archivée)
+  evidence: string[]; // artefacts de preuve : modules noyau, runs, specs
+}
+
+export const DOMAIN_ACTIVATIONS: DomainActivation[] = [
+  {
+    code: '08',
+    since: '2026-09-07',
+    evidence: [
+      'sandbox-executor.ts (YAHRIA-KRN-024) — install → syntaxe → build → launch → sondes HTTP, recettes fixes 12 stacks (INV-042, INV-190)',
+      'live-proof.ts — boucle gouvernée SEALED → LIVE_PROVED, budget 3 tentatives / 15 min, diagnostic du fichier fautif + self-heal borné (INV-210, INV-211)',
+      'Preuves LIVE archivées : RUN-000009 FastAPI HTTP 200 réel ; RUN-000013 (C), RUN-000014 (C++), RUN-000015 (Fortran), RUN-000017 (C#) — LIVE_PROVED, marqueur YAHRIA-LINK-OK',
+      'Spec publique : public/docs/SANDBOX_EXECUTION_SPECIFICATION.md v1.1.0',
+    ],
+  },
+  {
+    code: '10',
+    since: '2026-09-07',
+    evidence: [
+      'Backend process : env enfant scrubé (INV-213), timeouts par étape (INV-042), ports bornés 3910+, kill de groupe SIGTERM→SIGKILL, cwd confinement workspace',
+      'Backend conteneur durci (INV-215) : --network none, rootfs read-only, cap-drop ALL, no-new-privileges, cpu/mem/pids bornés — YAHRIA_SANDBOX_BACKEND=docker',
+      'Assets conteneur : docker/sandbox.Dockerfile (Ubuntu 24.04 non-root, 12 toolchains : gcc/g++/gfortran/python3/node/bun/go/rust/java/dotnet/mono)',
+      'Frontière honnête (INV-210) : démon Docker absent sur l hôte de preuve — backend conteneur branché et gardé, exécution conteneur non démontrée ici',
+    ],
+  },
+];
+
 // Dependency graph — FORBIDDEN dependencies (DEPENDENCY_GRAPH.md §28)
 export const FORBIDDEN_DEPENDENCIES: { from: string; to: string; reason: string }[] = [
   { from: 'Frontend', to: 'Database', reason: 'UI MUST NOT contain critical domain logic' },
