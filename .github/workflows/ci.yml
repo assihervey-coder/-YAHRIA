@@ -46,8 +46,8 @@ jobs:
       - name: GATE G9 — Parité noyau Python (pytest)
         run: |
           python -m pip install --upgrade pip
-          pip install -e yahria-core
-          pytest yahria-core/tests -q
+          pip install -e "yahria-core[dev]"
+          python -m pytest yahria-core/tests -q
 
       - name: Audit sécurité — scan des identifiants versionnés (INV-231)
         run: |
