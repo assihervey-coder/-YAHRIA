@@ -255,6 +255,29 @@ exigera une décision gouvernée D.6 avec preuves ; 13 nouveaux invariants
 (INV-221 → INV-234) gardent les capacités R14 ; suites de preuves cumulées
 R12 (22/22) + R13 (46/46) + R14 (47/47) exécutées contre l'API live.
 
+### R15 — VPS-ready (production packagée)
+
+La plateforme est **prête pour un déploiement VPS réel** : le runbook
+exécutable `public/docs/PROD_RUNBOOK_VPS.md` enchaîne l'ordre critique
+(révocation token → VPS → PostgreSQL → Docker durci → TLS → alerting →
+sauvegardes → validation → décision D.6) avec critères mesurés à chaque
+étape, et `scripts/vps-validate.sh` prouve chaque section sur l'hôte cible.
+
+Nouveautés R15 (preuves : `scripts/r15-vps-ready-tests.ts`, 16/16 PASS) :
+- **Rate limit `/api/v1` persisté en DB** (INV-235) : fenêtre glissante 60 s
+  comptée dans la base — multi-instance sans contournement mémoire
+  (`ApiRateEvent`), frontière exacte + reset de fenêtre mesurés.
+- **Alerting externe D.22** (KRN-039, INV-236) : 3 règles déterministes sur le
+  rapport ops (readiness rouge, SLO < 0.80, pic d'échecs), webhook POST signé
+  HMAC-SHA256 avec timeout 5 s, livraisons archivées `SENT`/`FAILED`/
+  `DEDUP_SKIPPED`/`NOT_CONFIGURED` — jamais d'abandon silencieux (INV-210).
+- **Stack prod durcie** : `docker-compose.prod.yml` (PostgreSQL mot de passe
+  obligatoire exposé sur 127.0.0.1, healthchecks, bornes mémoire/CPU, app
+  scalablable, Caddy TLS automatique `deploy/Caddyfile`),
+  `.env.production.example`, `scripts/backup-db.sh` (pg_dump + gzip + rétention).
+- 2 invariants nouveaux (INV-235/236) → **99 invariants**.
+
+
 ## Les 2 fichiers manquants — restaurés
 
 L'audit du corpus original avait révélé que la spec **Hybrid Reasoning** (le nom

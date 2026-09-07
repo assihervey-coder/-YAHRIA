@@ -108,6 +108,8 @@ export const INVARIANTS: Invariant[] = [
   { id: 'INV-232', family: 'QUALITY', title: 'Gates Before Claim', rule: 'No domain capability may be claimed DONE while a quality gate covering it fails; gate failures are facts, not opinions (INV-171/172).' },
   { id: 'INV-233', family: 'OPERATIONS', title: 'Health Is Measured, Not Assumed', rule: 'Health and readiness endpoints probe the real dependencies (database, fabric, providers); a synthetic always-green answer is forbidden (INV-044 at ops scale).' },
   { id: 'INV-234', family: 'ROADMAP', title: 'Roadmap Derived From Ledger', rule: 'Roadmap priorities are computed deterministically from the domain activation ledger and live metrics; no hand-edited status can enter the roadmap.' },
+  { id: 'INV-235', family: 'SECURITY', title: 'Rate Limit Shared By Fact', rule: 'The /api/v1 rate limit is a sliding window persisted in the database — every instance counts the same events, no in-memory counter can be bypassed by horizontal scaling.' },
+  { id: 'INV-236', family: 'OPERATIONS', title: 'Alerts Are Facts, Delivery Is Honest', rule: 'Every alert evaluation is archived (kind, delivery outcome, latency); webhook delivery is HMAC-signed and timeout-bounded; an unconfigured channel is declared NOT_CONFIGURED, never silently dropped (INV-210).' },
 ];
 
 export const INVARIANT_FAMILIES = Array.from(new Set(INVARIANTS.map((i) => i.family)));

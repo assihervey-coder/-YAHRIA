@@ -82,4 +82,5 @@ __pycache__/
 # Logs locaux
 dev-pg.log
 tool-results/
-.venv*/
+.venv*/# exception : le template prod est versionné (sans secrets)
+!.env.production.example

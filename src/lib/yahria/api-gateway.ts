@@ -6,7 +6,9 @@
 //     plaintext est retourné UNE fois à l'émission, jamais relisible.
 //   - Scopes hiérarchiques read < write < admin ; requête hors
 //     scope → 403, clé inconnue/révoquée → 401 (INV-230).
-//   - Rate limit par clé (fenêtre glissante 60 s, mémoire locale).
+//   - Rate limit par clé (fenêtre glissante 60 s) PERSISTÉ en base
+//     (INV-235) — partagé par toutes les instances, plus de compteur
+//     mémoire contournable par scaling horizontal.
 //   - Chaque appel versionné émet un événement observabilité.
 // ═══════════════════════════════════════════════════════════════
 
@@ -82,14 +84,15 @@ export async function revokeApiKey(params: {
   return { ok: true, status: 200, errors: [] };
 }
 
-// ── AG-2. VERIFICATION + RATE LIMIT (in-memory sliding window) ─────
+// ── AG-2. VERIFICATION + RATE LIMIT (persisté DB, INV-235) ──────
+// Chaque appel enregistre un fait ApiRateEvent ; la fenêtre glissante
+// 60 s est comptée en base — toutes les instances voient les mêmes
+// faits. Débordement concurrent borné (comptage optimiste), purge
+// opportuniste des faits > 10 min.
 
-interface RateBucket { windowStart: number; count: number }
-const g = globalThis as unknown as { __yahriaRateBuckets?: Map<string, RateBucket> };
-function buckets(): Map<string, RateBucket> {
-  if (!g.__yahriaRateBuckets) g.__yahriaRateBuckets = new Map();
-  return g.__yahriaRateBuckets;
-}
+const RATE_WINDOW_MS = 60_000;
+const RATE_PRUNE_MS = 600_000;
+const RATE_PRUNE_PROBABILITY = 0.05;
 
 export type AuthFailure = 'MISSING' | 'UNKNOWN' | 'REVOKED' | 'RATE_LIMITED';
 
@@ -114,16 +117,17 @@ export async function verifyApiKey(presented: string | null): Promise<ApiAuth> {
   if (row.revokedAt) {
     return { ok: false, failure: 'REVOKED', keyId: row.id, detail: `clé « ${row.name} » révoquée le ${row.revokedAt.toISOString()}` };
   }
-  // sliding 60s window per key
+  // Sliding 60 s window per key — PERSISTED (INV-235), shared by all instances
   const now = Date.now();
-  const b = buckets().get(row.id);
-  if (!b || now - b.windowStart >= 60_000) {
-    buckets().set(row.id, { windowStart: now, count: 1 });
-  } else {
-    b.count += 1;
-    if (b.count > row.rateLimitPerMin) {
-      return { ok: false, failure: 'RATE_LIMITED', keyId: row.id, keyName: row.name, detail: `rate limit dépassé (${row.rateLimitPerMin}/min) — réessayez plus tard` };
-    }
+  await db.apiRateEvent.create({ data: { keyId: row.id } });
+  const windowCount = await db.apiRateEvent.count({
+    where: { keyId: row.id, ts: { gte: new Date(now - RATE_WINDOW_MS) } },
+  });
+  if (windowCount > row.rateLimitPerMin) {
+    return { ok: false, failure: 'RATE_LIMITED', keyId: row.id, keyName: row.name, detail: `rate limit dépassé (${row.rateLimitPerMin}/min) — réessayez plus tard` };
+  }
+  if (Math.random() < RATE_PRUNE_PROBABILITY) {
+    await db.apiRateEvent.deleteMany({ where: { ts: { lt: new Date(now - RATE_PRUNE_MS) } } }).catch(() => undefined);
   }
   await db.apiKey.update({ where: { id: row.id }, data: { lastUsedAt: new Date() } });
   return {

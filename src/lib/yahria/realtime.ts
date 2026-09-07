@@ -143,4 +143,6 @@ export const REALTIME_EVENT_TYPES = {
   SECURITY_AUDITED: 'security.audited',
   // Quality (Domain 20 — R14)
   QUALITY_GATES_RUN: 'quality.gates.run',
+  // Operations — alerting externe (Domain 22 — R15)
+  ALERT_RAISED: 'alert.raised',
 } as const;

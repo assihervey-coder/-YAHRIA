@@ -1,0 +1,101 @@
+# ═══════════════════════════════════════════════════════════════
+# YAHRIA CODE OS — STACK PRODUCTION (R15)
+#
+#   cp .env.production.example .env.production   # puis éditer
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+#
+# Différences avec docker-compose.yml (dev) :
+#   - PostgreSQL mot de passe OBLIGATOIRE (POSTGRES_PASSWORD), port
+#     publié UNIQUEMENT sur 127.0.0.1 — jamais 0.0.0.0.
+#   - App : 2 réplicas possibles (rate limit persisté en DB, INV-235),
+#     limites mémoire/CPU, restart policy, healthcheck sur /ops.
+#   - Caddy en front : HTTPS automatique (Let's Encrypt) + WebSocket.
+#   - Backend sandbox conteneur durci activé par défaut (INV-215).
+# ═══════════════════════════════════════════════════════════════
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-yahria}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD obligatoire — générez avec openssl rand -base64 24}"
+      POSTGRES_DB: ${POSTGRES_DB:-yahria}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"   # accès admin local uniquement (pg_dump)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-yahria} -d ${POSTGRES_DB:-yahria}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    mem_limit: 1g
+    cpus: 1.0
+    networks: [yahria-internal, yahria-admin]
+
+  app:
+    build: .
+    image: yahria-os:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-yahria}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-yahria}
+      YAHRIA_DB_PROVIDER: postgresql
+      YAHRIA_SANDBOX_BACKEND: ${YAHRIA_SANDBOX_BACKEND:-docker}
+      YAHRIA_SANDBOX_IMAGE: ${YAHRIA_SANDBOX_IMAGE:-yahria-sandbox:latest}
+      YAHRIA_ALERT_WEBHOOK_URL: ${YAHRIA_ALERT_WEBHOOK_URL:-}
+      YAHRIA_ALERT_WEBHOOK_SECRET: ${YAHRIA_ALERT_WEBHOOK_SECRET:-}
+      NODE_ENV: production
+      PORT: 3000
+      # Fabric LLM (INV-213 : serveur uniquement, jamais côté client)
+      ZAI_API_KEY: ${ZAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - workspaces:/app/db/workspaces
+      - /var/run/docker.sock:/var/run/docker.sock   # backend sandbox docker (INV-215)
+    mem_limit: 2g
+    cpus: 2.0
+    networks: [yahria-internal, yahria-docker]
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/yahria/ops').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      YAHRIA_DOMAIN: "${YAHRIA_DOMAIN:?YAHRIA_DOMAIN obligatoire — ex yahria.example.com}"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    mem_limit: 256m
+    networks: [yahria-internal]
+
+volumes:
+  pgdata:
+  workspaces:
+  caddy_data:
+  caddy_config:
+
+networks:
+  yahria-internal:
+    driver: bridge
+  yahria-admin:
+    driver: bridge
+  yahria-docker:
+    driver: bridge

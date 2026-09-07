@@ -441,3 +441,37 @@ model OpsSnapshot {
   summary   String   @default("{}") // JSON detailed report
   createdAt DateTime @default(now())
 }
+
+// ── DOMAIN 17 — RATE LIMIT PERSISTÉ (multi-instance, R15) ──────────
+// Fenêtre glissante 60 s fondée sur des faits partagés entre toutes
+// les instances — la mémoire locale ne peut plus être contournée en
+// scalable horizontalement (INV-235).
+
+model ApiRateEvent {
+  id     String   @id @default(cuid())
+  keyId  String
+  ts     DateTime @default(now())
+
+  @@index([keyId, ts])
+}
+
+// ── DOMAIN 22 — ALERTING EXTERNE (R15) ─────────────────────────────
+// Chaque alerte évaluée est un fait archivé : déclencheur, livraison
+// webhook signée (HMAC) ou frontière honnête non configurée (INV-210),
+// anti-tempête par déduplication gouvernée (INV-236).
+
+model AlertEvent {
+  id          String    @id @default(cuid())
+  uid         String    @unique // ALR-…
+  kind        String    // READINESS_RED | SLO_DEGRADED | FAILURE_SPIKE
+  severity    String    // INFO | WARN | CRITICAL
+  title       String
+  detail      String
+  payloadJson String    @default("{}")
+  delivery    String    // SENT | NOT_CONFIGURED | DEDUP_SKIPPED | FAILED
+  deliveredOk Boolean?
+  deliveryMs  Int?
+  createdAt   DateTime  @default(now())
+
+  @@index([kind, createdAt])
+}
