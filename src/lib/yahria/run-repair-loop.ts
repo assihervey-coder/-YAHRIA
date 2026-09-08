@@ -113,6 +113,7 @@ import { emitYahriaEvent } from './realtime';
 import { classifyFailure } from './completeness-gate';
 import { generateFileContent, type GenerationContext, type BlueprintEntry } from './studio';
 import { isBootFidelityActive } from './boot-gate';
+import { isReverseDependentsActive } from './cross-contracts';
 
 export const RUN_REPAIR_EVO_UID = 'EVO-000028';
 
@@ -492,8 +493,86 @@ const REGISTRY_MAX_CONTINUATION = 8;
 export interface PythonContractOpts {
   /** EVO-000032 — capturer le corps indenté des registres top-level */
   registry?: boolean;
+  /** EVO-000033 (A/GC1) — capturer les routes des décorateurs FastAPI/Router (toute indentation) */
+  routes?: boolean;
+  /** EVO-000033 (A/GC1) — capturer les littéraux de retour des handlers (return { … }, ≤8 lignes) */
+  returns?: boolean;
+  /** EVO-000033 (B/XR) — fichier TEST : capturer les routes appelées (client.get/post) et les clés assertées */
+  testAssertions?: boolean;
+  /** EVO-000033 (B/XR) — capturer les lignes d'import top-level (surface de contrat d'un __init__.py dépendant) */
+  includeImports?: boolean;
   maxLines?: number;
   maxLineChars?: number;
+}
+
+// EVO-000033 (A/B) — motifs de la passe DÉDIÉE (toute indentation — routes,
+// retours et assertions vivent dans les corps de fonctions, invisibles à la
+// passe top-level STRICT) : DÉFAULT sans opts = aucun de ces motifs (extraction
+// signée EXACTE, rollback).
+const ROUTE_DECORATOR = /^\s*@(\w+)\.(get|post|put|delete|patch)\(\s*['"]([^'"]+)['"]/;
+const HANDLER_RETURN = /^\s*return\s*\{/;
+const TEST_ROUTE_CALL = /\b(?:client|requests)\.(get|post|put|delete|patch)\(\s*['"]([^'"]+)['"]/;
+const TEST_ASSERT_KEY = /assert\s+["']([^"']+)["']\s+in\s+\w+/;
+const TEST_ASSERT_STATUS = /assert\s+response\.status_code\s*==\s*(\d+)/;
+// EVO-000033 (B/XR) — surface d'import TOP-LEVEL d'un __init__.py dépendant :
+// « from .pesapal import PesaPalGateway » est LE contrat que le dépendant
+// attend de pesapal.py — invisible à PY_CONTRACT (ni class/def/CONST)
+const TOPLEVEL_IMPORT = /^(?:from\s+[\w.]+\s+import\s+|import\s+[\w.]+)/;
+
+function isTestFilePath(p: string): boolean {
+  return p.startsWith('tests/') || /(^|\/)test_[^/]+\.py$/.test(p) || /(^|\/)[^/]+_test\.py$/.test(p);
+}
+
+function isInitFilePath(p: string): boolean {
+  return /(^|\/)__init__\.py$/.test(p);
+}
+
+/**
+ * EVO-000033 (A/B) — passe DÉDIÉE sur TOUTES les lignes (toute indentation) :
+ * routes des décorateurs, retours de handlers (continuation bornée par
+ * pushRegistryBody — même borne ≤8 lignes que REG), assertions de test
+ * (routes appelées, clés « x » in data, status_code). Dédupliqué, borné
+ * par maxLines/maxLineChars — ne produit RIEN sans opts (rollback).
+ */
+function pushCrossContractLines(
+  lines: string[],
+  out: string[],
+  opts: { routes?: boolean; returns?: boolean; testAssertions?: boolean },
+  maxLines: number,
+  maxLineChars: number,
+): void {
+  const seen = new Set<string>(out);
+  const push = (line: string): boolean => {
+    const t = line.trim().slice(0, maxLineChars);
+    if (!t || seen.has(t)) return false;
+    if (out.length >= maxLines) return false;
+    seen.add(t);
+    out.push(t);
+    return true;
+  };
+  for (let i = 0; i < lines.length && out.length < maxLines; i++) {
+    const raw = lines[i] ?? '';
+    if (!raw.trim() || raw.trim().startsWith('#')) continue;
+    if (opts.routes) {
+      const m = raw.match(ROUTE_DECORATOR);
+      if (m) { push(raw.trim()); continue; }
+    }
+    if (opts.returns && HANDLER_RETURN.test(raw)) {
+      if (!push(raw.trim())) continue;
+      // littéral multi-ligne → même borne que REG (≤8 lignes de continuation)
+      const braces = (raw.match(/\{/g) ?? []).length - (raw.match(/\}/g) ?? []).length;
+      if (braces > 0) i = pushRegistryBody(lines, i, out, maxLines, maxLineChars);
+      continue;
+    }
+    if (opts.testAssertions) {
+      const r = raw.match(TEST_ROUTE_CALL);
+      if (r) { push(`${r[1]}("${r[2]}")`); continue; }
+      const k = raw.match(TEST_ASSERT_KEY);
+      if (k) { push(`assert "${k[1]}" in data`); continue; }
+      const s = raw.match(TEST_ASSERT_STATUS);
+      if (s) { push(`assert response.status_code == ${s[1]}`); continue; }
+    }
+  }
 }
 
 /**
@@ -532,7 +611,7 @@ export function extractPythonContracts(content: string, opts: PythonContractOpts
     if (!raw || raw.startsWith(' ') || raw.startsWith('\t')) continue;
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
-    if (PY_CONTRACT.test(line)) {
+    if (PY_CONTRACT.test(line) || (opts.includeImports && TOPLEVEL_IMPORT.test(line))) {
       out.push(line.slice(0, maxLineChars));
       // EVO-000032 (REG) — « GATEWAYS = { » : la déclaration OUVRE un
       // registre dont les clés indentées entrent au contrat (défaut sans
@@ -546,6 +625,12 @@ export function extractPythonContracts(content: string, opts: PythonContractOpts
       out.push(line.slice(0, maxLineChars));
       i = pushRegistryBody(lines, i, out, maxLines, maxLineChars);
     }
+  }
+  // EVO-000033 (A/B) — passe DÉDIÉE toute-indentation (routes / retours de
+  // handlers / assertions de test) : NE PRODUIT RIEN sans opts (défaut =
+  // extraction STRICTE signée EXACTE, rollback)
+  if (opts.routes || opts.returns || opts.testAssertions) {
+    pushCrossContractLines(lines, out, opts, maxLines, maxLineChars);
   }
   return out;
 }
@@ -561,6 +646,12 @@ export interface SiblingContract { path: string; lines: string[] }
  * ; bornes portées à 5 frères / 3600 car. par l'appelant quand PROMOTED.
  * EVO-000032 (REG) — opts.registry capture le corps indenté des registres
  * top-level (clés de fabrique GATEWAYS = { … }) dans les contrats frères.
+ * EVO-000033 (B/XR) — opts.dependents : les DÉPENDANTS INVERSES de la cible
+ * (fichiers qui l'importent — calculés par l'appelant depuis les imports
+ * réels des fichiers VERIFIED) entrent au contexte entre les imports et les
+ * co-cibles (depsFirst) ; opts.testAssertions : un frère TEST expose ses
+ * ASSERTIONS (routes appelées, clés assertées) — le contrat test↔impl
+ * devient visible aux deux sens (RUN-000051/000052).
  * Sans opts (défaut) → comportement signé EVO-000029 EXACT (rollback).
  */
 export async function buildSiblingContracts(
@@ -569,7 +660,7 @@ export async function buildSiblingContracts(
   coTargets: string[],
   treePaths: string[],
   readContent: (p: string) => Promise<string | null>,
-  opts: { maxSiblings?: number; maxChars?: number; depsFirst?: boolean; registry?: boolean } = {},
+  opts: { maxSiblings?: number; maxChars?: number; depsFirst?: boolean; registry?: boolean; dependents?: string[]; testAssertions?: boolean } = {},
 ): Promise<SiblingContract[]> {
   const maxSiblings = opts.maxSiblings ?? 3;
   const maxChars = opts.maxChars ?? 2400;
@@ -581,14 +672,20 @@ export async function buildSiblingContracts(
     order.push(p);
   };
   const internalImports = currentContent ? resolvePythonImports(currentContent, treePaths) : [];
+  const dependents = opts.dependents ?? [];
   if (opts.depsFirst) {
     // EVO-000031 (DC1) — dépendances STABLES d'abord : les co-cibles sont
     // régénérées dans le MÊME cycle (contrats mutables), les modules
     // importés existants sont la vérité fixe (RUN-000035/000041).
+    // EVO-000033 (XR) — dépendants inverses ENTRE les deux : le dépendant
+    // existe (vérifié) et expose le contrat ATTENDU de la cible
+    // (gateways/__init__.py attend PesaPalGateway — RUN-000052).
     for (const imp of internalImports) add(imp);
+    for (const d of dependents) add(d);
     for (const c of coTargets) add(c);
   } else {
     for (const c of coTargets) add(c); // co-cibles d'abord (réparées ENSEMBLE, EVO-000029)
+    for (const d of dependents) add(d); // EVO-000033 (XR) — après co-cibles, avant imports
     for (const imp of internalImports) add(imp);
   }
   const out: SiblingContract[] = [];
@@ -597,7 +694,18 @@ export async function buildSiblingContracts(
     if (out.length >= maxSiblings || budget <= 200) break;
     const content = await readContent(p);
     if (!content) continue; // absent/vide → pas de contrat inventé (INV-210)
-    const lines = extractPythonContracts(content, { registry: opts.registry });
+    // EVO-000033 (XR) — un frère TEST expose ses ASSERTIONS (routes appelées,
+    // clés assertées) et un frère __init__.py expose sa SURFACE D'IMPORT
+    // (le contrat attendu de la cible) quand opts.testAssertions est armé ;
+    // défaut = signatures seules (extraction signée EVO-000029/31/32 EXACTE)
+    const lines = extractPythonContracts(content, {
+      registry: opts.registry,
+      testAssertions: opts.testAssertions === true && isTestFilePath(p),
+      includeImports: opts.testAssertions === true && isInitFilePath(p),
+      // les assertions des derniers tests webhook dépassent la fenêtre de 14
+      // lignes — 30 lignes quand XR armé (borné par le budget car. du frère)
+      maxLines: opts.testAssertions === true ? 30 : undefined,
+    });
     if (!lines.length) continue; // sans contrat utile → sauté, ne consomme PAS de slot utile
     const joined = lines.join('\n').slice(0, budget);
     budget -= joined.length;
@@ -649,30 +757,51 @@ export async function runRepairCycle(input: RepairCycleInput): Promise<RepairCyc
   }
 
   // 3. CIBLAGE — imports résolus depuis la DB (source de vérité, jamais mémoire)
-  // EVO-000031 (DC1/DC2) + EVO-000032 (REG/BF) — armements lus AVANT le
-  // ciblage (les interrupteurs gouvernent les deux étapes) : fermeture des
-  // dépendances (imports réels d'abord, bornes 5/3600), contrats de registre,
-  // ciblage frames STRICT — indépendants (interrupteurs séparés).
+  // EVO-000031 (DC1/DC2) + EVO-000032 (REG/BF) + EVO-000033 (XR) — armements lus
+  // AVANT le ciblage (les interrupteurs gouvernent les deux étapes) : fermeture
+  // des dépendances (imports réels d'abord, bornes 5/3600), contrats de registre,
+  // ciblage frames STRICT, dépendants inverses + assertions de test —
+  // indépendants (interrupteurs séparés).
   const closureActive = await isDependencyClosureActive();
   const registryActive = await isRegistryContractsActive();
   const bootFidelity = await isBootFidelityActive();
-  const siblingOpts: { depsFirst?: boolean; maxSiblings?: number; maxChars?: number; registry?: boolean } = {};
+  const reverseActive = await isReverseDependentsActive();
+  const siblingOpts: { depsFirst?: boolean; maxSiblings?: number; maxChars?: number; registry?: boolean; dependents?: string[]; testAssertions?: boolean } = {};
   if (closureActive) {
     siblingOpts.depsFirst = true;
     siblingOpts.maxSiblings = 5;
     siblingOpts.maxChars = 3600;
   }
   if (registryActive) siblingOpts.registry = true;
+  if (reverseActive) siblingOpts.testAssertions = true;
   const treePathList = input.treePaths.map((t) => t.path);
+  // EVO-000033 (XR) — dépendants inverses par cible : reverse map des imports
+  // réels de TOUS les fichiers VERIFIED (T ∈ imports(F) ⇒ F dépendant de T).
+  // Calculé UNE fois par cycle, borné par l'arbre (≤13 fichiers) ; la map
+  // importsByFile du ciblage garde sa sémantique signée (tests + entrées).
+  const dependentsByFile: Record<string, string[]> = {};
   const importsByFile: Record<string, string[]> = {};
   if (input.stack === 'PYTHON') {
     const rows = await db.generatedFile.findMany({ where: { runId: input.runId, state: 'VERIFIED' } });
+    const allImports: Record<string, string[]> = {};
     for (const row of rows) {
       const base = row.path.split('/').pop() ?? row.path;
       const isTest = row.path.startsWith('tests/') || base.startsWith('test_') || base.endsWith('_test.py');
       const isEntry = ENTRY_CANDIDATES.includes(base);
-      if (!isTest && !isEntry) continue;
-      importsByFile[row.path] = resolvePythonImports(row.content ?? '', treePathList);
+      if (!isTest && !isEntry) {
+        if (reverseActive) allImports[row.path] = resolvePythonImports(row.content ?? '', treePathList);
+        continue;
+      }
+      const resolved = resolvePythonImports(row.content ?? '', treePathList);
+      importsByFile[row.path] = resolved;
+      if (reverseActive) allImports[row.path] = resolved;
+    }
+    if (reverseActive) {
+      for (const [importer, deps] of Object.entries(allImports)) {
+        for (const dep of deps) {
+          (dependentsByFile[dep] ??= []).push(importer);
+        }
+      }
     }
   }
   const targets = mapGateNotesToTargets({
@@ -729,7 +858,9 @@ export async function runRepairCycle(input: RepairCycleInput): Promise<RepairCyc
       target.path, current,
       targets.map((t) => t.path), treePathList,
       async (p) => (await db.generatedFile.findFirst({ where: { runId: input.runId, path: p } }))?.content ?? null,
-      siblingOpts,
+      // EVO-000033 (XR) — dépendants inverses DE LA CIBLE (reverse map calculée
+      // en tête du cycle) ; bornes/ordre gouvernés par les interrupteurs
+      { ...siblingOpts, dependents: reverseActive ? (dependentsByFile[target.path] ?? []) : undefined },
     );
     const siblingPoint = siblings.length
       ? `SIBLING CONTRACTS (EVO-000029 cross-file repair context) — these sibling files ALREADY define these exact symbols; import and use them EXACTLY as declared, NEVER re-declare, re-name, or invent different shapes:\n${siblings.map((s) => `--- ${s.path} ---\n${s.lines.join('\n')}`).join('\n')}`

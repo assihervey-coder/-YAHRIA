@@ -19,6 +19,7 @@ import path from 'path';
 import { readdir, stat } from 'fs/promises';
 import { db } from '@/lib/db';
 import { captureAndPersist } from './evidence-store';
+import { isSealedFidelityActive, sealedDetail } from './cross-contracts';
 
 export const BEHAVIORAL_GATE_EVO_UID = 'EVO-000025';
 const PYTEST_TIMEOUT_MS = 180_000;
@@ -108,6 +109,10 @@ export async function runBehavioralGate(runUid: string, workspaceDir: string, st
   const t0 = Date.now();
   const stages: BehavioralGateStage[] = [];
   let passed = false;
+  // EVO-000033 (C/BF3) — scellé fidèle : même cap 600 → 2400 (tête+queue) que
+  // la porte de boot — la queue pytest (assertions, diffs) survit au TRACÉ
+  // scellé ; défaut sans EVO-000033 = slice(0,600) signé EXACT (rollback).
+  const sealedFidelity = await isSealedFidelityActive();
 
   try {
     if (stack !== 'PYTHON') {
@@ -186,7 +191,7 @@ export async function runBehavioralGate(runUid: string, workspaceDir: string, st
   await captureAndPersist({
     category: passed ? 'ARTIFACT' : 'INCIDENT', criticality: 'HIGH', actorType: 'SYSTEM', actorId: 'yahria-behavioral-gate',
     claim: `Porte comportementale (EVO-000025) ${passed ? 'PASS' : 'FAIL'} : ${runUid} — ${stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`,
-    payload: { runUid, stack, passed, totalMs: report.totalMs, stages: stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 600) })) },
+    payload: { runUid, stack, passed, totalMs: report.totalMs, sealedFidelity, stages: stages.map((s) => ({ stage: s.stage, state: s.state, detail: sealedFidelity ? sealedDetail(s.detail) : s.detail.slice(0, 600) })) },
     traceId,
   });
   return report;

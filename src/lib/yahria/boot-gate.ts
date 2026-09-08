@@ -17,6 +17,7 @@ import path from 'path';
 import { readFile, readdir } from 'fs/promises';
 import { db } from '@/lib/db';
 import { captureAndPersist } from './evidence-store';
+import { isSealedFidelityActive, sealedDetail } from './cross-contracts';
 
 export const BOOT_GATE_EVO_UID = 'EVO-000016';
 const BOOT_WAIT_MS = 30_000;
@@ -177,6 +178,12 @@ export async function runBootGate(runUid: string, workspaceDir: string, stack: s
   // EVO-000032 (BF-2) — armement lu UNE FOIS par porte (TTL 5s) : stderr
   // tête+queue si PROMOTED, tail seul (comportement signé EVO-000029) sinon.
   const bootFidelity = await isBootFidelityActive();
+  // EVO-000033 (C/BF3) — scellé fidèle : cap des détails de stages 600 → 2400
+  // (tête 1200 + marqueur + queue 1200 au-delà) — les frames workspace d'un
+  // traceback (en QUEUE) survivent au TRACÉ scellé ; défaut sans EVO-000033 =
+  // slice(0,600) signé EXACT (rollback). La note LIVE consommée par le ciblage
+  // est déjà complète (objet failStages) — BF3 ne change QUE le scellé.
+  const sealedFidelity = await isSealedFidelityActive();
 
   try {
     if (stack !== 'PYTHON') {
@@ -318,7 +325,7 @@ export async function runBootGate(runUid: string, workspaceDir: string, stack: s
   await captureAndPersist({
     category: passed ? 'ARTIFACT' : 'INCIDENT', criticality: 'HIGH', actorType: 'SYSTEM', actorId: 'yahria-boot-gate',
     claim: `Porte de boot (EVO-000016) ${passed ? 'PASS' : 'FAIL'} : ${runUid} — ${stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`,
-    payload: { runUid, stack, passed, totalMs: report.totalMs, openapi: openapiNote, bootFidelity, stages: stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 600) })) },
+    payload: { runUid, stack, passed, totalMs: report.totalMs, openapi: openapiNote, bootFidelity, sealedFidelity, stages: stages.map((s) => ({ stage: s.stage, state: s.state, detail: sealedFidelity ? sealedDetail(s.detail) : s.detail.slice(0, 600) })) },
     traceId,
   });
   return report;

@@ -24,9 +24,10 @@ import {
   type BlueprintEntry, type ParsedTree, type StudioRunState,
 } from './studio';
 import { isBootGateActive, runBootGate, type BootGateReport } from './boot-gate';
+import { isCrossContractsActive, deriveDependsOnEdges, type LedgerEntry } from './cross-contracts';
+import { runRepairCycle, extractPythonContracts, isRegistryContractsActive } from './run-repair-loop';
 import { isBehavioralGateActive, runBehavioralGate, type BehavioralGateReport } from './behavioral-gate';
 import { isCompletenessGateActive, runCompletenessGate, type CompletenessGateReport } from './completeness-gate';
-import { runRepairCycle } from './run-repair-loop';
 import {
   isBudgetPerGateActive, newRepairBudget, repairBudgetAvailable,
   consumeRepairBudget, repairCyclesUsed,
@@ -182,6 +183,19 @@ async function runStudioPipeline(runId: string): Promise<void> {
 
     // ── PLANNED — S2 blueprint ───────────────────────────────────────
     const { blueprint, modelUsed } = await planBlueprint(run.brief, tree);
+    // EVO-000033 (A/GC2) — arêtes dependsOn DÉRIVÉES quand le planificateur
+    // n'en émet pas (blueprints réels RUN-000051/052 : VIDE pour 13/13 →
+    // ordre anti-topologique : __init__.py importeur généré 1ᵉʳ) puis
+    // ré-ordonnancement topologique signé (orderBlueprint) : les modules
+    // importés passent AVANT leurs importeurs. Défaut sans EVO-000033 =
+    // blueprint signé EXACT (rollback). Le blueprint scellé en DB reste
+    // celui du planificateur (traçabilité) — l'ordre dérivé est un choix
+    // d'EXÉCUTION, scellé dans les evidences de génération par l'ordre des rows.
+    const crossActive = await isCrossContractsActive();
+    const registryActiveGate = await isRegistryContractsActive();
+    const genBlueprint = crossActive
+      ? orderBlueprint(deriveDependsOnEdges(blueprint, tree.files.map((f) => f.path)))
+      : blueprint;
     await transitionRun(runId, runUid, 'PERCEIVED', 'PLANNED');
     await db.$transaction([
       db.generationRun.update({ where: { id: runId }, data: { blueprint: JSON.stringify(blueprint) } }),
@@ -210,7 +224,13 @@ async function runStudioPipeline(runId: string): Promise<void> {
     // 1 cycle/run SANS redéploiement ; classification INV-210 et ≤3 fichiers intacts.
     const repairBudget = newRepairBudget(await isBudgetPerGateActive());
 
-    for (const entry of blueprint) {
+    // EVO-000033 (A/GC1) — registre de contrats INCRÉMENTAL du run : chaque
+    // fichier VÉRIFIÉ publie ses contrats (signatures, clés de registre,
+    // routes, retours de handlers) ; le fichier suivant les voit AVANT
+    // d'écrire les siens — deux co-générés ne convergent plus à l'aveugle.
+    const contractLedger: LedgerEntry[] = [];
+
+    for (const entry of genBlueprint) {
       const fileRow = await db.generatedFile.findFirst({ where: { runId, path: entry.path } });
       if (!fileRow) continue;
       // pacing anti-rafale : espacer les appels S2 pour rester sous le rate-limit (429)
@@ -231,6 +251,9 @@ async function runStudioPipeline(runId: string): Promise<void> {
         entry,
         treePaths: tree.files.map((f) => ({ path: f.path, role: f.role })),
         dependencySources: depSources,
+        // EVO-000033 (A/GC1) — registre des fichiers déjà vérifiés (borné 3600,
+        // adjacence d'abord) ; sans EVO-000033 armé, generateFileContent ignore ce champ
+        contractLedger: crossActive ? contractLedger : undefined,
       });
       retries += result.attempts - 1;
       totalGenMs += result.ms;
@@ -244,6 +267,14 @@ async function runStudioPipeline(runId: string): Promise<void> {
         });
         generated += 1;
         totalBytes += bytes;
+        // EVO-000033 (A/GC1) — publication au registre : extraction A (routes +
+        // retours) composée avec le registre EVO-000032 s'il est PROMOTED
+        if (crossActive) {
+          const ledgerLines = extractPythonContracts(result.content, {
+            registry: registryActiveGate, routes: true, returns: true, maxLines: 24,
+          });
+          if (ledgerLines.length) contractLedger.push({ path: entry.path, lines: ledgerLines });
+        }
         emit(STUDIO_EVENTS.FILE_GENERATED, 'SUCCESS',
           `Studio ${runUid} : ${entry.path} vérifié (${bytes} octets, ${result.attempts} tentative(s))`, runUid,
           { path: entry.path, bytes, attempts: result.attempts, sha256: hash.slice(0, 16) });

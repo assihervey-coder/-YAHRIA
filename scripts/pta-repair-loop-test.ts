@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // ═══════════════════════════════════════════════════════════════════
 // YAHRIA — TESTS BOUCLE DE RÉPARATION CIBLÉE (EVO-000028 + EVO-000029
-// + EVO-000030 + EVO-000031 + EVO-000032) — PTA-002 it.12 · Tests unitaires de
+// + EVO-000030 + EVO-000031 + EVO-000032 + EVO-000033) — PTA-002 it.13 · Tests unitaires de
 // run-repair-loop.ts : armement réel, ciblage PUR (détails de portes RÉELS
 // it.7 + détails FIDÈLES EVO-000029), contrats inter-fichiers (RC3),
 // résolution d'imports, classification INV-210, budget PAR PORTE + contrat
@@ -711,10 +711,188 @@ check('T12.16 drill ROLLED_BACK : registres + fidélité DÉSARMÉS sans redépl
 check('T12.17 drill re-PROMOTED : registres + fidélité RÉ-ARMÉS sans redéploiement', drill32OnReg && drill32OnBf);
 check(`T12.18 état EXACT restauré après le drill (${state32Before?.state} — décision humaine intacte, INV-227)`, restored32);
 
+// ══════════════════════════════════════════════════════════════════
+// RR-T13. EVO-000033 — CONTRATS CROISÉS INTER-CO-GÉNÉRÉS
+//  (A) GC1 registre incrémental (routes + retours + registres) et GC2
+//      arêtes dependsOn dérivées + ordre topologique ;
+//  (B) XR dépendants inverses + assertions de test + surface d'import
+//      d'un __init__.py dépendant ;
+//  (C) BF3 scellé fidèle (2400 tête+queue) ;
+//  (D) FB attente bornée sur circuit OPEN (snapshot injecté).
+//  FIXTURES RÉELLES : workspaces RUN-000051 (main.py + tests/test_api.py —
+//  « name »/« service », /webhook vs /webhooks) et RUN-000052 (pesapal.py
+//  « class PesaPal » vs __init__.py « PesaPalGateway »).
+// ══════════════════════════════════════════════════════════════════
+console.log('\n── T13 · EVO-000033 — contrats croisés inter-co-générés (fixtures réelles RUN-000051/052) ──');
+
+import {
+  isCrossContractsActive, isReverseDependentsActive, isSealedFidelityActive, isFabricBackoffActive,
+  resetCrossContractsCaches, CROSS_CONTRACTS_EVO_UID,
+  deriveDependsOnEdges, buildLedgerBlock, sealedDetail, waitFabricClosed, isFabricExhaustedNote,
+} from '../src/lib/yahria/cross-contracts';
+import { orderBlueprint } from '../src/lib/yahria/studio';
+
+const WS51 = '/home/z/my-project/db/workspaces/RUN-000051';
+const WS52 = '/home/z/my-project/db/workspaces/RUN-000052';
+const readWs = (root: string, rel: string): string => readFileSync(`${root}/${rel}`, 'utf8');
+
+// T13.0 — armements réels (EVO-000033 PROMOTED en DB)
+resetCrossContractsCaches();
+check(`T13.0 les QUATRE interrupteurs reflètent le registre RÉEL (EVO-000033 PROMOTED)`,
+  (await isCrossContractsActive()) === true && (await isReverseDependentsActive()) === true &&
+  (await isSealedFidelityActive()) === true && (await isFabricBackoffActive()) === true);
+
+// T13.1 (A/GC1) — routes du main.py RÉEL RUN-000051 (défaut invisible : la passe top-level sautait… non —
+// les décorateurs sont top-level MAIS ne matchaient pas PY_CONTRACT : ils étaient INVISIBLES)
+const main51 = readWs(WS51, 'main.py');
+const routes51 = extractPythonContracts(main51, { routes: true, maxLines: 30 });
+check('T13.1 (A) routes extraites du main.py RÉEL RUN-000051 : @app.post("/webhooks/{gateway}" + @app.get("/health"',
+  routes51.some((l) => l.includes('@app.post("/webhooks/{gateway}"')) && routes51.some((l) => l.includes('@app.get("/health"')));
+
+// T13.2 (A/GC1) — retours de handlers : la clé réelle « service » visible (le test attend « name »)
+const returns51 = extractPythonContracts(main51, { returns: true, maxLines: 30 });
+check('T13.2 (A) retour du handler /health extrait (clé réelle « service » visible au registre)',
+  returns51.some((l) => l.startsWith('return {') && l.includes('"service": HUB_NAME')));
+
+// T13.3 (B/XR) — ASSERTIONS du test RÉEL RUN-000051 : route singulière + clé attendue
+const test51 = readWs(WS51, 'tests/test_api.py');
+const asserts51 = extractPythonContracts(test51, { testAssertions: true, maxLines: 30 });
+check('T13.3 (B) assertions du test RÉEL : post("/webhook/NotchPay") + assert "name" in data',
+  asserts51.some((l) => l.includes('post("/webhook/NotchPay")')) && asserts51.some((l) => l === 'assert "name" in data'));
+
+// T13.4 — DÉFAUT STRICT : sans opts, AUCUNE route/retour/assertion (rollback)
+const strict51 = extractPythonContracts(main51);
+const strictTest51 = extractPythonContracts(test51);
+check('T13.4 défaut sans opts : extraction STRICTE inchangée (ni route, ni retour, ni assertion)',
+  !strict51.some((l) => l.includes('@app.')) && !strict51.some((l) => l.startsWith('return {')) &&
+  !strictTest51.some((l) => l.includes('/webhook/')) && !strictTest51.some((l) => l.startsWith('assert')));
+
+// T13.5 (B/XR) — DÉPENDANT INVERSE : réparer pesapal.py (RUN-000052) voit __init__.py
+// (surface d'import — « from .pesapal import PesaPalGateway ») AVANT les co-cibles
+const pesapal52 = readWs(WS52, 'gateways/pesapal.py');
+const sibXR = await buildSiblingContracts(
+  'gateways/pesapal.py', pesapal52,
+  ['gateways/notchpay.py'], TREE32,
+  async (p) => (p === 'gateways/__init__.py' ? readWs(WS52, 'gateways/__init__.py') : p === 'gateways/notchpay.py' ? readWs(WS52, 'gateways/notchpay.py') : null),
+  { depsFirst: true, maxSiblings: 5, maxChars: 3600, dependents: ['gateways/__init__.py'], testAssertions: true },
+);
+const sibXRPaths = sibXR.map((s) => s.path);
+check('T13.5 (B) dépendant inverse __init__.py au contexte (imports visibles) AVANT la co-cible notchpay',
+  sibXRPaths.includes('gateways/__init__.py') &&
+  sibXRPaths.indexOf('gateways/__init__.py') < sibXRPaths.indexOf('gateways/notchpay.py') &&
+  (sibXR.find((s) => s.path === 'gateways/__init__.py')?.lines ?? []).some((l) => l.includes('from .pesapal import PesaPalGateway')));
+
+// T13.6 (B/XR) — DÉFAUT sans dependents/testAssertions : ordre signé EVO-000031 EXACT (rollback)
+const sibDefault = await buildSiblingContracts(
+  'gateways/pesapal.py', pesapal52,
+  ['gateways/notchpay.py'], TREE32,
+  async (p) => (p === 'gateways/__init__.py' ? readWs(WS52, 'gateways/__init__.py') : p === 'gateways/notchpay.py' ? readWs(WS52, 'gateways/notchpay.py') : null),
+  { depsFirst: true, maxSiblings: 5, maxChars: 3600 },
+);
+check('T13.6 défaut sans XR : __init__.py ABSENT du contexte (pas de dépendants inventés)',
+  !sibDefault.some((s) => s.path === 'gateways/__init__.py'));
+
+// T13.7 (B/XR) — le frère TEST expose ses assertions quand réparer main.py (RUN-000051)
+const sibTest = await buildSiblingContracts(
+  'main.py', main51,
+  ['tests/test_api.py'], TREE32,
+  async (p) => (p === 'tests/test_api.py' ? test51 : null),
+  { depsFirst: true, maxSiblings: 5, maxChars: 3600, testAssertions: true },
+);
+const testLines = sibTest.find((s) => s.path === 'tests/test_api.py')?.lines ?? [];
+check('T13.7 (B) contrat frère TEST : route « /webhook/NotchPay » + clé « name » visibles à la réparation de main.py',
+  testLines.some((l) => l.includes('post("/webhook/NotchPay")')) && testLines.some((l) => l === 'assert "name" in data'));
+
+// T13.8 (A/GC2) — arêtes dérivées sur le blueprint RÉEL RUN-000052 (dependsOn vides 13/13)
+const bp52 = TREE32.map((p) => ({ path: p, purpose: 'fixture RUN-000052', dependsOn: [] as string[], keyPoints: [], order: 0 }));
+const derived52 = deriveDependsOnEdges(bp52, TREE32);
+const dInit = derived52.find((e) => e.path === 'gateways/__init__.py');
+const dMain = derived52.find((e) => e.path === 'main.py');
+const dTest = derived52.find((e) => e.path === 'tests/test_api.py');
+check('T13.8 (A) arêtes dérivées : __init__→frères (pesapal), main→modules+gateways/__init__, tests→main',
+  (dInit?.dependsOn ?? []).includes('gateways/pesapal.py') &&
+  (dMain?.dependsOn ?? []).includes('gateways/__init__.py') && (dMain?.dependsOn ?? []).includes('config.py') &&
+  (dTest?.dependsOn ?? []).includes('main.py'));
+
+// T13.9 (A/GC2) — ORDRE TOPOLOGIQUE : pesapal.py AVANT gateways/__init__.py (fini l'importeur 1ᵉʳ)
+const ordered52 = orderBlueprint(deriveDependsOnEdges(bp52, TREE32) as any);
+const idxInit = ordered52.findIndex((e) => e.path === 'gateways/__init__.py');
+const idxPesapal = ordered52.findIndex((e) => e.path === 'gateways/pesapal.py');
+const idxTest = ordered52.findIndex((e) => e.path === 'tests/test_api.py');
+check('T13.9 (A) ordre topologique : pesapal.py AVANT gateways/__init__.py, main.py AVANT tests/test_api.py',
+  idxPesapal < idxInit && idxInit >= 0 && idxTest > ordered52.findIndex((e) => e.path === 'main.py'));
+
+// T13.10 (A/GC1) — registre : adjacence (même package d'abord), fichier courant exclu, budget respecté
+const ledgerFixture: import('../src/lib/yahria/cross-contracts').LedgerEntry[] = [
+  { path: 'gateways/__init__.py', lines: ['from .base import BaseGateway'] },
+  { path: 'main.py', lines: ['@app.post("/webhooks/{gateway}")', 'return {"status": "healthy", "service": HUB_NAME}'] },
+  { path: 'gateways/base.py', lines: ['class BaseGateway(ABC)', 'def verify(cls, payload: bytes) -> bool'] },
+  { path: 'gateways/pesapal.py', lines: ['class PesaPal(BaseGateway)'] },
+  { path: 'gateways/notchpay.py', lines: ['class NotchPayGateway(BaseGateway)'] },
+];
+const block1 = buildLedgerBlock(ledgerFixture, 'gateways/__init__.py');
+const blockPos = block1.indexOf('gateways/pesapal.py') < block1.indexOf('main.py');
+const blockSelf = !block1.includes('--- gateways/__init__.py ---');
+const longLedger: import('../src/lib/yahria/cross-contracts').LedgerEntry[] = Array.from({ length: 60 }, (_, i) => ({
+  path: `mod${i}.py`, lines: [`${'x'.repeat(90)} // ${i}`],
+}));
+const blockBudget = buildLedgerBlock(longLedger, 'main.py');
+check('T13.10 (A) registre : adjacence gateways d\u2019abord, fichier courant exclu, budget 3600 respecté',
+  blockPos && blockSelf && blockBudget.length <= 3600);
+
+// T13.11 (C/BF3) — scellé fidèle : long détail → tête+marqueur+queue ; court → intégral
+const longDetail = 'A'.repeat(1200) + 'X'.repeat(1500) + 'frames workspace main.py:6 gateways/__init__.py:3 ImportError PesaPalGateway';
+const sealedLong = sealedDetail(longDetail);
+const sealedShort = sealedDetail('court : uvicorn main:app répond en 210 ms');
+check('T13.11 (C) scellé fidèle : 1200+tête, marqueur d\u2019omission, queue avec frames workspace ; court intégral',
+  sealedLong.length <= 2400 + 120 && sealedLong.includes('caractères de détail intermédiaires omis') &&
+  sealedLong.includes('PesaPalGateway') && sealedShort === 'court : uvicorn main:app répond en 210 ms');
+
+// T13.12 (D/FB) — attente bornée : fermé immédiat ; ouvert tout le long → closed=false à échéance
+// (sleep RÉEL — l'horloge Date.now() doit avancer pour que l'échéance arrive)
+const rClosed = await waitFabricClosed(() => ({ anyOpen: false, maxRemainingMs: 0, openProviders: [] }), 200, 50);
+let toggled = 0;
+const rTimeout = await waitFabricClosed(
+  () => { toggled += 1; return { anyOpen: true, maxRemainingMs: 90_000, openProviders: ['zai'] }; },
+  120, 40,
+);
+check('T13.12 (D) backoff : circuit fermé → 0 attente ; circuit ouvert → échéance bornée (closed=false)',
+  rClosed.closed && rClosed.waitedMs < 50 && !rTimeout.closed && rTimeout.waitedMs >= 120 && toggled > 1);
+
+// T13.13 (D/FB) — déclencheur : note fabric OUI, note pytest NON
+check('T13.13 (D) déclencheur « LLM fabric exhausted — zai:circuit OPEN » OUI / verdict pytest NON',
+  isFabricExhaustedNote('erreur modèle : LLM fabric exhausted — zai:circuit OPEN (cooldown 90s)') &&
+  isFabricExhaustedNote('porte comportementale — PYTEST : 5 failed') === false);
+
+// T13.14-15 — drill promotion-safe EVO-000033 : ROLLED_BACK → 4 interrupteurs OFF ; re-PROMOTED → ON
+const state33Before = await db.evolutionProposal.findUnique({ where: { proposalUid: CROSS_CONTRACTS_EVO_UID } });
+let drill33Off = false, drill33On = false, restored33 = false;
+try {
+  await db.evolutionProposal.update({ where: { proposalUid: CROSS_CONTRACTS_EVO_UID }, data: { state: 'ROLLED_BACK' } });
+  resetCrossContractsCaches();
+  drill33Off = !(await isCrossContractsActive()) && !(await isReverseDependentsActive()) &&
+               !(await isSealedFidelityActive()) && !(await isFabricBackoffActive());
+  await db.evolutionProposal.update({ where: { proposalUid: CROSS_CONTRACTS_EVO_UID }, data: { state: 'PROMOTED' } });
+  resetCrossContractsCaches();
+  drill33On = (await isCrossContractsActive()) && (await isReverseDependentsActive()) &&
+              (await isSealedFidelityActive()) && (await isFabricBackoffActive());
+} finally {
+  await db.evolutionProposal.update({
+    where: { proposalUid: CROSS_CONTRACTS_EVO_UID },
+    data: { state: state33Before?.state ?? 'UNDER_REVIEW' },
+  });
+  resetCrossContractsCaches();
+  const back33 = await db.evolutionProposal.findUnique({ where: { proposalUid: CROSS_CONTRACTS_EVO_UID } });
+  restored33 = back33?.state === state33Before?.state;
+}
+check('T13.14 drill ROLLED_BACK : les QUATRE leviers DÉSARMÉS sans redéploiement (comportements signés restaurés)', drill33Off);
+check('T13.15 drill re-PROMOTED + état EXACT restauré (les QUATRE leviers RÉ-ARMÉS, décision humaine intacte INV-227)',
+  drill33On && restored33);
+
 await captureAndPersist({
   category: 'POLICY', criticality: 'STANDARD', actorType: 'SYSTEM', actorId: 'pta-repair-loop-test',
-  claim: `Drill armement EVO-000028+000029+000030+000031+000032 : boucle armée, budget par porte + pydantic v2 + fermeture des dépendances + contrats de registre + fidélité boot vérifiés, états ${stateBefore?.state}/${state30Before?.state}/${state31Before?.state}/${state32Before?.state} restaurés à l'identique (${passed} PASS / ${failed} FAIL) — décisions humaines intactes (INV-227)`,
-  payload: { proposalUid: RUN_REPAIR_EVO_UID, proposal30Uid: 'EVO-000030', proposal31Uid: 'EVO-000031', proposal32Uid: 'EVO-000032', statePreserved: stateBefore?.state, state30Preserved: state30Before?.state, state31Preserved: state31Before?.state, state32Preserved: state32Before?.state, passed, failed, drillArmed, drillInfra, drillNoTarget, restoredOk, drill30Off, drill30BackOn, restored30, drill31Off, drill31BackOn, restored31, drill32OffReg, drill32OnReg, drill32OffBf, drill32OnBf, restored32 },
+  claim: `Drill armement EVO-000028+000029+000030+000031+000032+000033 : boucle armée, budget par porte + pydantic v2 + fermeture des dépendances + contrats de registre + fidélité boot + CONTRATS CROISÉS (génération/dépendants inverses/scellé fidèle/backoff fabric) vérifiés, états ${stateBefore?.state}/${state30Before?.state}/${state31Before?.state}/${state32Before?.state}/${state33Before?.state} restaurés à l'identique (${passed} PASS / ${failed} FAIL) — décisions humaines intactes (INV-227)`,
+  payload: { proposalUid: RUN_REPAIR_EVO_UID, proposal30Uid: 'EVO-000030', proposal31Uid: 'EVO-000031', proposal32Uid: 'EVO-000032', proposal33Uid: CROSS_CONTRACTS_EVO_UID, statePreserved: stateBefore?.state, state30Preserved: state30Before?.state, state31Preserved: state31Before?.state, state32Preserved: state32Before?.state, state33Preserved: state33Before?.state, passed, failed, drillArmed, drillInfra, drillNoTarget, restoredOk, drill30Off, drill30BackOn, restored30, drill31Off, drill31BackOn, restored31, drill32OffReg, drill32OnReg, drill32OffBf, drill32OnBf, restored32, drill33Off, drill33On, restored33 },
 });
 
 console.log(`\n═ Résultat : ${passed} PASS / ${failed} FAIL ═\n`);

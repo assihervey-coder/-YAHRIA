@@ -559,6 +559,8 @@ export interface GenerationContext {
   entry: BlueprintEntry;
   treePaths: { path: string; role: string }[];
   dependencySources: { path: string; content: string }[];
+  /** EVO-000033 (A/GC1) — registre des fichiers déjà vérifiés du run ; ignoré sans armement (INV-227) */
+  contractLedger?: import('./cross-contracts').LedgerEntry[];
 }
 
 /** Agent coder — génère le contenu d'un fichier avec retries correctifs. */
@@ -599,6 +601,25 @@ STRICT OUTPUT RULES:
         .join('\n\n')}`
     : '';
 
+  // EVO-000033 (A/GC1 + D/FB) — armements lus UNE fois par fichier :
+  // (A) registre de contrats incrémental (fichiers déjà vérifiés du run)
+  // injecté UNIQUEMENT si EVO-000033 est PROMOTED — défaut = prompt signé
+  // EXACT sans bloc ; (D) backoff fabric sur circuit OPEN — défaut =
+  // enchaînement à sec signé. Inv-210 INTACT dans les deux cas.
+  let ledgerBlock = '';
+  let fabricBackoff = false;
+  let ccMod: typeof import('./cross-contracts') | null = null;
+  try {
+    ccMod = await import('./cross-contracts');
+    if (await ccMod.isCrossContractsActive()) {
+      ledgerBlock = ccMod.buildLedgerBlock(ctx.contractLedger ?? [], ctx.entry.path);
+    }
+    fabricBackoff = await ccMod.isFabricBackoffActive();
+  } catch {
+    // gouvernance indisponible → prompt legacy inchangé, pas d'attente
+  }
+  let backoffUsed = false;
+
   let lastNote = '';
   let attempts = 0;
   for (let i = 0; i < maxAttempts; i++) {
@@ -614,7 +635,7 @@ MISSION BRIEF:
 ${ctx.brief.slice(0, 1800)}
 
 FILE TREE (paths that will exist):
-${ctx.treePaths.map((t) => `- ${t.path} (${t.role})`).join('\n')}${depBlock}
+${ctx.treePaths.map((t) => `- ${t.path} (${t.role})`).join('\n')}${depBlock}${ledgerBlock ? `\n\nCONTRACT REGISTER (files ALREADY generated in this run — their symbols/classes/routes/response keys are the TRUTH; import and use them EXACTLY, NEVER invent alternative names, spellings, or routes):\n${ledgerBlock}` : ''}
 
 FILE TO GENERATE: ${ctx.entry.path}
 PURPOSE: ${ctx.entry.purpose}
@@ -629,6 +650,27 @@ ${ctx.entry.keyPoints.map((k) => `- ${k}`).join('\n') || '- implémentation comp
       lastNote = verdict.note;
     } catch (e) {
       lastNote = `erreur modèle : ${(e as Error).message.slice(0, 140)}`;
+    }
+    // EVO-000033 (D/FB) — circuit OPEN : UNE attente bornée (≤90 s, poll 5 s
+    // sur l'état pur du disjoncteur) au lieu d'enchaîner à sec dans un circuit
+    // ouvert (cascade mesurée it.12 : ~19 appels/min → limitation → échecs en
+    // rafale). Une seule fois par fichier ; INV-210 INTACT (le backoff ne
+    // re-classe rien — un échec fabric reste INFRA, jamais réparé) ; défaut
+    // sans EVO-000033 = enchaînement à sec signé EXACT.
+    if (fabricBackoff && ccMod && i + 1 < maxAttempts && !backoffUsed && ccMod.isFabricExhaustedNote(lastNote)) {
+      backoffUsed = true;
+      try {
+        const { circuitCooldownSnapshot } = await import('./llm-fabric');
+        const { captureAndPersist } = await import('./evidence-store');
+        const r = await ccMod.waitFabricClosed(circuitCooldownSnapshot);
+        await captureAndPersist({
+          category: 'OPERATIONS', criticality: 'LOW', actorType: 'SYSTEM', actorId: 'yahria-coder',
+          claim: `EVO-000033 (FB) backoff fabric : ${ctx.entry.path} — attente ${r.waitedMs} ms (circuit ${r.closed ? 'refermé' : 'encore ouvert à échéance'}) avant nouvelle tentative`,
+          payload: { path: ctx.entry.path, waitedMs: r.waitedMs, closed: r.closed, note: String(lastNote).slice(0, 160) },
+        });
+      } catch {
+        // gouvernance/DB indisponible → pas d'attente (comportement signé)
+      }
     }
   }
   return { content: '', attempts, verified: false, note: `échec après ${attempts} tentatives — dernier verdict : ${lastNote}`, ms: Date.now() - t0 };
