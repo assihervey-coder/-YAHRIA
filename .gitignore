@@ -65,3 +65,25 @@ server.log
 /scripts/report_body.pdf
 /scripts/report_cover.pdf
 /scripts/report_chart_dims.png
+.zscripts/
+
+# Python (yahria-core)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.egg-info/
+
+# R7.2 — cluster PostgreSQL local (espace utilisateur, non versionné)
+.pgdata/
+.pgsock/
+.pg.log
+
+# Logs locaux
+dev-pg.log
+tool-results/
+.venv*/# exception : le template prod est versionné (sans secrets)
+!.env.production.example
+
+# Transients locaux (dumps d outils agent)
+/tool-results/

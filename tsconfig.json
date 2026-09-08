@@ -39,6 +39,10 @@
   "exclude": [
     "node_modules",
     "recovery",
-    "examples"
+    "db",
+    "download",
+    "upload",
+    "examples",
+    "skills"
   ]
 }

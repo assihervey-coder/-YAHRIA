@@ -1,0 +1,45 @@
+# ═══════════════════════════════════════════════════════════════
+# YAHRIA CODE OS — stack complète (R11.3 / R7.2)
+#   docker compose up -d
+# App : http://localhost:3000 — PostgreSQL 16 persistant (volume).
+# Backend sandbox conteneur (optionnel) :
+#   YAHRIA_SANDBOX_BACKEND=docker docker compose up -d
+# (nécessite l'image sandbox : docker build -f docker/sandbox.Dockerfile
+#   -t yahria-sandbox:latest .)
+# ═══════════════════════════════════════════════════════════════
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: yahria
+      POSTGRES_PASSWORD: yahria
+      POSTGRES_DB: yahria
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yahria"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  app:
+    build: .
+    image: yahria-os:latest
+    environment:
+      DATABASE_URL: postgresql://yahria:yahria@db:5432/yahria
+      YAHRIA_DB_PROVIDER: postgresql
+      YAHRIA_SANDBOX_BACKEND: ${YAHRIA_SANDBOX_BACKEND:-process}
+      YAHRIA_SANDBOX_IMAGE: ${YAHRIA_SANDBOX_IMAGE:-yahria-sandbox:latest}
+      # Fabric LLM : monter les clés souhaitées (INV-213 : jamais côté client)
+      # DEEPSEEK_API_KEY: sk-...
+      # ANTHROPIC_API_KEY: sk-ant-...
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./db/workspaces:/app/db/workspaces
+
+volumes:
+  pgdata:
