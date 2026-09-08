@@ -307,6 +307,13 @@ async function main(): Promise<void> {
     if (!(await Bun.file(VERDICTS_FILE).exists())) throw new Error('aucun verdict enregistré');
     const verdicts = (await Bun.file(VERDICTS_FILE).text()).split('\n').filter(Boolean).map((l) => JSON.parse(l) as SlotVerdict);
     verdicts.sort((x, y) => x.slot - y.slot);
+    // garde harnais : les 3 slots DOIVENT avoir un verdict (counted ou INFRA-EXCLU)
+    // — aucun agrégat partiel scellé (leçon it.10 tentative 2 : fabric OPEN a
+    // sauté des slots et finalize aurait scellé 1/3)
+    const missingSlots = [1, 2, 3].filter((s) => !verdicts.some((v) => v.slot === s));
+    if (missingSlots.length > 0) {
+      throw new Error(`finalize refusé — slots sans verdict : ${missingSlots.join(', ')} (rejouer : slot N) — aucun agrégat partiel ne sera scellé`);
+    }
 
     const counted = verdicts.filter((v) => v.classification !== 'INFRA-EXCLU');
     const sealedCycle0 = counted.filter((v) => v.classification === 'SUCCÈS-CYCLE0').length;
