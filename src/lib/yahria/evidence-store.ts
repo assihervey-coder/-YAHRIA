@@ -8,8 +8,8 @@ import { captureEvidence, setSeqStart, advanceSeq, type EvidenceCapture, type Ev
 
 let seqSynced = false;
 
-async function syncSeq(): Promise<void> {
-  if (seqSynced) return;
+async function syncSeq(force = false): Promise<void> {
+  if (seqSynced && !force) return;
   try {
     // Sync from the MAX UID suffix — not from count(). In-memory-only captures
     // (e.g. the legacy agent capability probe) consume sequence numbers WITHOUT
@@ -59,7 +59,15 @@ export async function captureAndPersist(
       return { rec, uid: rec.evidenceUid, id: created.id };
     } catch (e) {
       if (String(e).includes('Unique constraint') && attempt < 4) {
+        // A concurrent writer (e.g. the server pipeline sealing its own evidence
+        // while a measurement harness runs) may have advanced the durable
+        // sequence by MANY rows since our last sync — +1 steps cannot close a
+        // large gap within 5 attempts (it.12 slot 3 FATAL 19:38Z). Re-syncing
+        // from the durable MAX UID closes the whole gap in one step; setSeqStart
+        // only raises, so this is idempotent. advanceSeq(1) stays as a fallback
+        // for the DB-unreachable branch (INV-210: catch up, do not guess).
         advanceSeq(1);
+        await syncSeq(true);
         continue;
       }
       throw e;
