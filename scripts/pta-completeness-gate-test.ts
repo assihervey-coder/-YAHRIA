@@ -7,8 +7,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 import { PrismaClient } from '@prisma/client';
-import { classifyFailure, COMPLETENESS_GATE_EVO_UID } from '../src/lib/yahria/completeness-gate.ts';
-import { circuitCooldownSnapshot } from '../src/lib/yahria/llm-fabric.ts';
+import { classifyFailure, COMPLETENESS_GATE_EVO_UID } from '../src/lib/yahria/completeness-gate';
+import { circuitCooldownSnapshot } from '../src/lib/yahria/llm-fabric';
 
 const db = new PrismaClient();
 let passed = 0, failed = 0;
