@@ -556,13 +556,23 @@ export interface GenerationContext {
 /** Agent coder — génère le contenu d'un fichier avec retries correctifs. */
 export async function generateFileContent(ctx: GenerationContext, maxAttempts = 3): Promise<GeneratedContent> {
   const t0 = Date.now();
-  const system = `You are YAHRIA's coder agent. You write COMPLETE, production-quality source files.
+  let system = `You are YAHRIA's coder agent. You write COMPLETE, production-quality source files.
 STRICT OUTPUT RULES:
 - Output ONLY the raw file content. No markdown fences, no explanations before or after.
 - The file must be complete and self-consistent: no TODOs, no placeholders, no truncated bodies.
 - Imports may only reference files present in the provided tree or standard/well-known libraries of the stack.
 - Match the declared purpose and key points exactly.
 - Keep the file focused: ${ctx.stack} conventions, clean structure.${STACK_HINTS[ctx.stack] ? ` STACK CONVENTIONS: ${STACK_HINTS[ctx.stack]}` : ''}`;
+
+  // EVO-000027 — few-shot exemplaire doré : addendum (contrat + exemplaire)
+  // ajouté au prompt système UNIQUEMENT si armé (EVO-000027 PROMOTED).
+  // AUCUN autre changement : retries, vérification S1 et portes intacts.
+  try {
+    const { goldenSystemAddendum } = await import('./golden-exemplar');
+    system += await goldenSystemAddendum(ctx.stack, ctx.entry.path, ctx.entry.purpose);
+  } catch {
+    // addendum indisponible → comportement legacy inchangé
+  }
 
   const depBlock = ctx.dependencySources.length > 0
     ? `\nDEPENDENCY FILES (already generated):\n${ctx.dependencySources
