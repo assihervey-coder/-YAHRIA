@@ -1,0 +1,410 @@
+{
+  "sealedTotal": 0,
+  "sealedCycle0": 0,
+  "sealedRepair": 0,
+  "repairsEngaged": 3,
+  "countedSlots": 3,
+  "aggregateRate": 0.5384615384615384,
+  "ac1": false,
+  "ac2": false,
+  "ac3": true,
+  "ac4": true,
+  "verdicts": [
+    {
+      "slot": 1,
+      "runUid": "RUN-000013",
+      "state": "FAILED",
+      "attempts": 1,
+      "sealedFirstPass": false,
+      "sealedWithRepair": false,
+      "classification": "MODÈLE",
+      "error": "porte de boot (EVO-000016) — BOOT : uvicorn main:app sans réponse HTTP en 30s — connexion refusée [réparation EVO-000028 : 3 réparé(s), 0 en échec persistant — re-porte FAIL]",
+      "repairEngaged": true,
+      "repairKind": "BOOT",
+      "repairTargets": [
+        "main.py",
+        "config.py",
+        "models.py"
+      ],
+      "repairRepaired": [
+        "main.py",
+        "config.py",
+        "models.py"
+      ],
+      "repairStillBroken": [],
+      "repairEvidence": [
+        "EV-ARTIFACT-000098: Fichier réparé par la boucle EVO-000028 : main.py (3602 octets) — boot sans réponse HTTP — racine visée : uvicorn main:app sans réponse HTTP en 30s — connexion ",
+        "EV-ARTIFACT-000099: Fichier réparé par la boucle EVO-000028 : config.py (146 octets) — import racine de main.py — chemin d'exécution du boot",
+        "EV-ARTIFACT-000100: Fichier réparé par la boucle EVO-000028 : models.py (1283 octets) — import racine de main.py — chemin d'exécution du boot",
+        "EV-ARTIFACT-000101: Boucle de réparation EVO-000028 (BOOT) : 3 fichier(s) réparé(s), 0 en échec persistant — re-vérification de la porte par l'orchestrateur : RUN-000013"
+      ],
+      "filesExpected": 13,
+      "filesVerified": 13,
+      "filesFirstPass": 10,
+      "firstPassRate": 0.7692307692307693,
+      "perFile": [
+        {
+          "path": "gateways/base.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 1862,
+          "repaired": false
+        },
+        {
+          "path": "config.py",
+          "state": "VERIFIED",
+          "attempts": 2,
+          "bytes": 146,
+          "repaired": true
+        },
+        {
+          "path": "security.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 824,
+          "repaired": false
+        },
+        {
+          "path": "gateways/notchpay.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 4393,
+          "repaired": false
+        },
+        {
+          "path": "gateways/pesapal.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 4456,
+          "repaired": false
+        },
+        {
+          "path": "gateways/__init__.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 329,
+          "repaired": false
+        },
+        {
+          "path": "models.py",
+          "state": "VERIFIED",
+          "attempts": 2,
+          "bytes": 1283,
+          "repaired": true
+        },
+        {
+          "path": "schemas.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 927,
+          "repaired": false
+        },
+        {
+          "path": "webhooks.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 5324,
+          "repaired": false
+        },
+        {
+          "path": "main.py",
+          "state": "VERIFIED",
+          "attempts": 2,
+          "bytes": 3602,
+          "repaired": true
+        },
+        {
+          "path": "tests/__init__.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 55,
+          "repaired": false
+        },
+        {
+          "path": "tests/test_api.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 2340,
+          "repaired": false
+        },
+        {
+          "path": "requirements.txt",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 72,
+          "repaired": false
+        }
+      ],
+      "gate3Evidence": [
+        "EV-ARTIFACT-000095: Porte de complétude (EVO-000026) PASS : RUN-000013 — INVENTAIRE:PASS CLASSIFICATION:SKIP CIRCUIT:SKIP REMÉDIATION:SKIP VERDICT:PASS"
+      ],
+      "gates": {},
+      "replayedFrom": []
+    },
+    {
+      "slot": 2,
+      "runUid": "RUN-000016",
+      "state": "FAILED",
+      "attempts": 3,
+      "sealedFirstPass": false,
+      "sealedWithRepair": false,
+      "classification": "MODÈLE",
+      "error": "porte comportementale (EVO-000025) — PYTEST : pytest exit 1 — 2 failed, 2 passed, 1 warning in 1.31s — FAILED tests/test_api.py::test_initiate_payment - assert 500 == 201 | FAILED tests/test_api.py::test_webhook - assert 500 == 200 | 2 failed, 2  [réparation EVO-000028 : 2 réparé(s), 0 en échec persistant — re-porte FAIL]",
+      "repairEngaged": true,
+      "repairKind": "BEHAVIORAL",
+      "repairTargets": [
+        "main.py",
+        "tests/test_api.py"
+      ],
+      "repairRepaired": [
+        "main.py",
+        "tests/test_api.py"
+      ],
+      "repairStillBroken": [],
+      "repairEvidence": [
+        "EV-ARTIFACT-000153: Fichier réparé par la boucle EVO-000028 : main.py (3202 octets) — échec pytest — module du chemin d'exécution (test tests/test_api.py)",
+        "EV-ARTIFACT-000154: Fichier réparé par la boucle EVO-000028 : tests/test_api.py (1841 octets) — échec pytest signalé : pytest exit 1 — 2 failed, 2 passed, 1 warning in 1.36s — FAIL",
+        "EV-ARTIFACT-000155: Boucle de réparation EVO-000028 (BEHAVIORAL) : 2 fichier(s) réparé(s), 0 en échec persistant — re-vérification de la porte par l'orchestrateur : RUN-000016"
+      ],
+      "filesExpected": 13,
+      "filesVerified": 13,
+      "filesFirstPass": 11,
+      "firstPassRate": 0.8461538461538461,
+      "perFile": [
+        {
+          "path": "gateways/base.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 1862,
+          "repaired": false
+        },
+        {
+          "path": "config.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 146,
+          "repaired": false
+        },
+        {
+          "path": "security.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 808,
+          "repaired": false
+        },
+        {
+          "path": "gateways/notchpay.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 3870,
+          "repaired": false
+        },
+        {
+          "path": "gateways/pesapal.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 3612,
+          "repaired": false
+        },
+        {
+          "path": "gateways/__init__.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 288,
+          "repaired": false
+        },
+        {
+          "path": "models.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 356,
+          "repaired": false
+        },
+        {
+          "path": "schemas.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 969,
+          "repaired": false
+        },
+        {
+          "path": "webhooks.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 2110,
+          "repaired": false
+        },
+        {
+          "path": "main.py",
+          "state": "VERIFIED",
+          "attempts": 2,
+          "bytes": 3202,
+          "repaired": true
+        },
+        {
+          "path": "tests/__init__.py",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 54,
+          "repaired": false
+        },
+        {
+          "path": "tests/test_api.py",
+          "state": "VERIFIED",
+          "attempts": 2,
+          "bytes": 1841,
+          "repaired": true
+        },
+        {
+          "path": "requirements.txt",
+          "state": "VERIFIED",
+          "attempts": 1,
+          "bytes": 72,
+          "repaired": false
+        }
+      ],
+      "gate3Evidence": [
+        "EV-ARTIFACT-000149: Porte de complétude (EVO-000026) PASS : RUN-000016 — INVENTAIRE:PASS CLASSIFICATION:SKIP CIRCUIT:SKIP REMÉDIATION:SKIP VERDICT:PASS"
+      ],
+      "gates": {},
+      "replayedFrom": [
+        "RUN-000014",
+        "RUN-000015"
+      ]
+    },
+    {
+      "slot": 3,
+      "runUid": "RUN-000020",
+      "state": "FAILED",
+      "attempts": 3,
+      "sealedFirstPass": false,
+      "sealedWithRepair": false,
+      "classification": "MODÈLE",
+      "error": "porte de boot (EVO-000016) — BOOT : uvicorn main:app sans réponse HTTP en 30s — connexion refusée [réparation EVO-000028 : 3 réparé(s), 0 en échec persistant — re-porte FAIL]",
+      "repairEngaged": true,
+      "repairKind": "BOOT",
+      "repairTargets": [
+        "main.py",
+        "config.py",
+        "models.py"
+      ],
+      "repairRepaired": [
+        "main.py",
+        "config.py",
+        "models.py"
+      ],
+      "repairStillBroken": [],
+      "repairEvidence": [
+        "EV-ARTIFACT-000206: Fichier réparé par la boucle EVO-000028 : main.py (3165 octets) — boot sans réponse HTTP — racine visée : uvicorn main:app sans réponse HTTP en 30s — connexion ",
+        "EV-ARTIFACT-000207: Fichier réparé par la boucle EVO-000028 : config.py (685 octets) — import racine de main.py — chemin d'exécution du boot",
+        "EV-ARTIFACT-000208: Fichier réparé par la boucle EVO-000028 : models.py (425 octets) — import racine de main.py — chemin d'exécution du boot",
+        "EV-ARTIFACT-000209: Boucle de réparation EVO-000028 (BOOT) : 3 fichier(s) réparé(s), 0 en échec persistant — re-vérification de la porte par l'orchestrateur : RUN-000020"
+      ],
+      "filesExpected": 13,
+      "filesVerified": 13,
+      "filesFirstPass": 0,
+      "firstPassRate": 0,
+      "perFile": [
+        {
+          "path": "gateways/__init__.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 167,
+          "repaired": false
+        },
+        {
+          "path": "main.py",
+          "state": "VERIFIED",
+          "attempts": 5,
+          "bytes": 3165,
+          "repaired": true
+        },
+        {
+          "path": "config.py",
+          "state": "VERIFIED",
+          "attempts": 5,
+          "bytes": 685,
+          "repaired": true
+        },
+        {
+          "path": "gateways/base.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 1862,
+          "repaired": false
+        },
+        {
+          "path": "gateways/notchpay.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 3999,
+          "repaired": false
+        },
+        {
+          "path": "gateways/pesapal.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 1685,
+          "repaired": false
+        },
+        {
+          "path": "models.py",
+          "state": "VERIFIED",
+          "attempts": 5,
+          "bytes": 425,
+          "repaired": true
+        },
+        {
+          "path": "schemas.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 1767,
+          "repaired": false
+        },
+        {
+          "path": "security.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 1695,
+          "repaired": false
+        },
+        {
+          "path": "webhooks.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 3039,
+          "repaired": false
+        },
+        {
+          "path": "tests/__init__.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 149,
+          "repaired": false
+        },
+        {
+          "path": "tests/test_api.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 5533,
+          "repaired": false
+        },
+        {
+          "path": "requirements.txt",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 72,
+          "repaired": false
+        }
+      ],
+      "gate3Evidence": [
+        "EV-ARTIFACT-000203: Porte de complétude (EVO-000026) PASS : RUN-000020 — INVENTAIRE:FAIL CLASSIFICATION:PASS CIRCUIT:SKIP CIRCUIT-POST:PASS REMÉDIATION:PASS VER"
+      ],
+      "gates": {},
+      "replayedFrom": [
+        "RUN-000017",
+        "RUN-000018"
+      ]
+    }
+  ]
+}
