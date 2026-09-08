@@ -1,0 +1,64 @@
+{
+  "gate": "PTA-001/EVO-000016-boot-gate",
+  "version": "1.0",
+  "ts": "2026-09-07T22:57:21+00:00",
+  "label": "RUN-000023-corrige (vérification indépendante)",
+  "target": "upload/RUN-000023-corrige",
+  "passed": true,
+  "verdict": "PASS",
+  "totalMs": 3871,
+  "openapi": {
+    "paths": 4,
+    "operations": 4,
+    "probes": {
+      "/openapi.json": 200,
+      "/docs": 200,
+      "/health": 200,
+      "/": 404
+    }
+  },
+  "stages": [
+    {
+      "stage": "INVENTAIRE",
+      "state": "PASS",
+      "detail": "stack détectée PYTHON — 12 .py, 0 .js, 0 statiques",
+      "ms": 0
+    },
+    {
+      "stage": "STRUCTURE",
+      "state": "PASS",
+      "detail": "tous les fichiers Python sont importables (extensions + noms de module valides)",
+      "ms": 22
+    },
+    {
+      "stage": "SYNTAXE",
+      "state": "PASS",
+      "detail": "12 fichiers compilés sans erreur",
+      "ms": 1319
+    },
+    {
+      "stage": "DÉCOUVERTE",
+      "state": "PASS",
+      "detail": "module main:app (FastAPI/create_app)",
+      "ms": 0
+    },
+    {
+      "stage": "BOOT",
+      "state": "PASS",
+      "detail": "uvicorn main:app répond sur :48411 (boot 2009 ms)",
+      "ms": 2009
+    },
+    {
+      "stage": "SONDES",
+      "state": "PASS",
+      "detail": "4/4 routes répondent : {\"/openapi.json\": 200, \"/docs\": 200, \"/health\": 200, \"/\": 404}",
+      "ms": 1
+    },
+    {
+      "stage": "OPENAPI",
+      "state": "PASS",
+      "detail": "4 chemins / 4 opérations exposées",
+      "ms": 0
+    }
+  ]
+}

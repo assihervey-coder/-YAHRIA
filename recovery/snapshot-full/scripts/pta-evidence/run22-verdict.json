@@ -1,0 +1,46 @@
+{
+  "protocol": "PTA-001",
+  "iteration": 1,
+  "runUid": "RUN-000022",
+  "finalState": "FAILED",
+  "gate": "EVO-000016 (PROMOTED, EV-POLICY-000556)",
+  "internalGate": {
+    "passed": false,
+    "stages": [
+      {
+        "stage": "INVENTAIRE",
+        "state": "PASS",
+        "detail": "12 fichiers .py"
+      },
+      {
+        "stage": "STRUCTURE",
+        "state": "PASS",
+        "detail": "tous importables — cause racine RUN-000021 (44 îlots) NON répétée"
+      },
+      {
+        "stage": "SYNTAXE",
+        "state": "PASS",
+        "detail": "12 fichiers compilés — troncatures RUN-000021 NON répétées"
+      },
+      {
+        "stage": "DÉCOUVERTE",
+        "state": "PASS",
+        "detail": "module main:app"
+      },
+      {
+        "stage": "BOOT",
+        "state": "FAIL",
+        "detail": "uvicorn main:app sans réponse HTTP en 30s — connexion refusée"
+      }
+    ]
+  },
+  "independentGate": "N/A (run non scellé — aucun ZIP à vérifier, la porte a bloqué)",
+  "diagnosis": "ImportError: cannot import name 'SECRET_KEY' from 'config' — symbole halluciné inter-fichiers (security.py ligne 5). py_compile PASS car syntaxiquement valide ; seul le boot réel détecte cette classe (frontière INV-215 fermée par EVO-000016).",
+  "verdict": "L-NOT-PROVEN",
+  "honesty": "INV-210 : échec mesuré et scellé, non masqué. Les classes d'échec RUN-000021 (îlots non importables, troncatures) n'ont PAS été répétées ; une nouvelle classe (symbole inter-fichiers halluciné) est apparue au stage BOOT — le cycle d'évolution itère (D.15).",
+  "evidence": [
+    "EV-INCIDENT-000619",
+    "EV-POLICY-000555",
+    "EV-POLICY-000556"
+  ]
+}

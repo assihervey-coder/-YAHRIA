@@ -1,0 +1,68 @@
+# ═══════════════════════════════════════════════════════════════
+# YAHRIA CODE OS — CI (Domain 21 DevOps & Delivery, R14)
+# Gates constitutionnelles : chaque push est mesuré, pas affirmé.
+# ═══════════════════════════════════════════════════════════════
+name: yahria-constitutional-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    env:
+      # Chemin résolu par Prisma relativement au schéma (prisma/) — le dossier
+      # parent existe toujours dans un checkout frais, contrairement à db/.
+      DATABASE_URL: file:./ci.db
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Le client Prisma DOIT être généré AVANT la vérification de types :
+      # @prisma/client non généré n'exporte pas PrismaClient (TS2305) et
+      # dégrade les types de tous les modèles en aval.
+      - name: Prisma client — généré avant toute vérification de types
+        run: bun run db:generate
+
+      - name: GATE G7 — TypeScript (tsc --noEmit, 0 erreur exigé)
+        run: bunx tsc --noEmit
+
+      - name: GATE G8 — ESLint (0 erreur exigé)
+        run: bun run lint
+
+      - name: Prisma schema → client + base CI
+        run: bun run db:push
+
+      - name: GATE G9 — Parité noyau Python (pytest)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "yahria-core[dev]"
+          python -m pytest yahria-core/tests -q
+
+      - name: Audit sécurité — scan des identifiants versionnés (INV-231)
+        run: |
+          if git grep -I -n -E 'ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-ant-[A-Za-z0-9-]{20,}|AKIA[A-Z0-9]{16}' -- .; then
+            echo "::error::Identifiants détectés dans l'arborescence versionnée"
+            exit 1
+          else
+            echo "Aucun motif d'identifiant détecté."
+          fi
+
+      - name: Invariants — registre cohérent (unicité, ≥ 97)
+        run: |
+          COUNT=$(grep -c "id: 'INV-" src/lib/yahria/invariants.ts)
+          echo "Invariants déclarés : $COUNT"
+          test "$COUNT" -ge 97
+
+      - name: Smoke de livraison — build de production
+        run: bun run build

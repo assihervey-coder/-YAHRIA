@@ -1,0 +1,45 @@
+{
+  "protocol": "PTA-002 — double porte (boot v1 EVO-000016 + comportementale v2 EVO-000025)",
+  "finalVerdict": "L-NOT-PROVEN (critère strict : SEALED au premier coup sous double porte)",
+  "criterion": "un run Studio scellé au PREMIER passage avec porte v1 PASS + porte v2 PASS, 0 correction humaine",
+  "iterations": [
+    {
+      "iteration": 3,
+      "runUid": "RUN-000024",
+      "blockedBy": "porte v1 BOOT",
+      "defects": "NameError BaseGateway non importé dans gateways/notchpay.py + symbole halluciné GatewayFactory importé par main.py",
+      "state": "FAILED — non scellé"
+    },
+    {
+      "iteration": 4,
+      "runUid": "RUN-000025",
+      "blockedBy": "porte v2 PYTEST",
+      "defects": "couche d'authentification inventée (APIKeyHeader + get_api_key) — 401 sur tous les POST ; 9 failed / 4 passed",
+      "state": "FAILED — non scellé",
+      "note": "porte v1 PASSÉE au premier coup"
+    },
+    {
+      "iteration": 5,
+      "runUid": "RUN-000026",
+      "blockedBy": "porte v1 DÉCOUVERTE",
+      "defects": "main.py jamais généré (génération incomplète : config.py, models.py, gateways/ seulement)",
+      "state": "FAILED — non scellé"
+    }
+  ],
+  "ceQuiEstProve": {
+    "portes": "les DEUX portes sont calibrées deux côtés CONFORME (v1 : calibration-original/corrige.json ; v2 : calibration-v2-sealed/corrige.json) et interceptent 3/3 livrables défaillants en conditions réelles",
+    "gouvernance": "0 livrable défaillant scellé depuis l'armement EVO-000016 (contre RUN-000019 et RUN-000021 scellés défectueux avant) — le changement de comportement est mesuré au niveau GOUVERNANCE",
+    "boucle": "5 itérations tracées en missions gouvernées (MIS-000019 à MIS-000022) : mesure → diagnostic scellé → leçon plus granulaire → retest, jamais de masquage (INV-210)"
+  },
+  "ceQuiNEstPasProve": {
+    "générateur": "la génération au premier coup sous double porte n'est PAS atteinte — variance élevée : chaque run introduit une dérive nouvelle (symbole halluciné, import manquant, couche auth inventée, fichier absent)",
+    "conclusion_user": "l'insight initial est CONFIRMÉ par la mesure : YAHRIA a appris à se mesurer (portes armées, 100% d'interception) ; il n'a PAS encore appris à ne plus produire l'erreur (générateur non déterministe) — la différence entre mesurer et ne plus répéter est maintenant CHIFFRÉE : 0/3 premiers coups sous double porte"
+  },
+  "livrableFonctionnel": "download/yahria-RUN-000023-corrige.zip — boot gate 7/7 + pytest 7/7 + porte indépendante 7/7",
+  "evidences": [
+    "EV-POLICY-000575 (promotion v2)",
+    "EV-INCIDENT (3 interceptions live)",
+    "calibration-v2-*.json",
+    "MIS-000019/20/21/22"
+  ]
+}

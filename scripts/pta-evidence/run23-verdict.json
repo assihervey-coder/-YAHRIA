@@ -1,0 +1,39 @@
+{
+  "protocol": "PTA-001",
+  "iterations": [
+    {
+      "iteration": 1,
+      "runUid": "RUN-000022",
+      "finalState": "FAILED",
+      "result": "Porte EVO-000016 a BLOQUÉ le scellement — BOOT FAIL (ImportError SECRET_KEY, symbole inter-fichiers halluciné). STRUCTURE et SYNTAXE PASS : les classes RUN-000021 (îlots, troncatures) NON répétées.",
+      "verdict": "L-NOT-PROVEN",
+      "evidence": [
+        "EV-INCIDENT-000619",
+        "EV-POLICY-000555",
+        "EV-POLICY-000556"
+      ]
+    },
+    {
+      "iteration": 2,
+      "runUid": "RUN-000023",
+      "finalState": "SEALED",
+      "result": "SEALED au PREMIER passage sous porte armée, 0 correction humaine du code généré. Porte interne 7/7 PASS (1113 ms). Porte indépendante (jumeau Python) 7/7 PASS sur le ZIP scellé (1355 ms).",
+      "verdict": "L-PROVEN (critère protocole : boot premier coup)",
+      "evidence": [
+        "run23-independent-gate.json"
+      ]
+    }
+  ],
+  "finalVerdict": "L-PROVEN — l'apprentissage est PROUVÉ au critère défini (boot premier coup), pas déclaré.",
+  "learningCurve": [
+    "RUN-000021 : 44 îlots non importables, 12 troncatures, 0% bootable — scellé quand même (frontière INV-215 ouverte)",
+    "RUN-000022 it.1 : îlots et troncatures NON répétés ; bloqué par la porte sur ImportError inter-fichiers — échec mesuré, scellé, non masqué (INV-210)",
+    "RUN-000023 it.2 : boot premier coup, scellé, double vérification PASS — la boucle mesure→diagnostic→évolution→retest fonctionne"
+  ],
+  "frontiereMesuree": "Porte v1 = boot-level. pytest sur RUN-000023 scellé : 5 échecs 500 (dérive de contrat inter-fichiers : get_gateway arity, await sur méthode sync, except masquant 400/401). Nouvelle classe de défaut, INVISIBLE au boot — candidate EVO pour la porte v2 (sondes comportementales). Livrable corrigé 7/7 pytest livré séparément (yahria-RUN-000023-corrige.zip).",
+  "artifacts": {
+    "sealed": "download/yahria-RUN-000023-sealed.zip",
+    "corrected": "download/yahria-RUN-000023-corrige.zip",
+    "mission": "MIS-000019 COMPLETED"
+  }
+}

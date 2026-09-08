@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  @page { size: 794px 1123px; margin: 0; }
+  :root {
+    --page-bg: #eff0f1;
+    --card-bg: #e4e7e8;
+    --header-fill: #334650;
+    --border: #b8c8cf;
+    --accent: #3681a6;
+    --text-primary: #1a1b1c;
+    --text-muted: #6f7578;
+    --c-bg: #ffffff;
+    --c-accent: #3681a6;
+    --c-text: #1a1b1c;
+    --c-muted: #6f7578;
+    --c-mid: #334650;
+    --c-surface: #e4e7e8;
+  }
+  html, body {
+    margin: 0; padding: 0;
+    width: 794px; height: 1123px;
+    background: var(--c-bg);
+    color: var(--c-text);
+    font-family: 'Inter', 'Liberation Sans', Arial, sans-serif;
+  }
+  @media screen {
+    html { height: auto; display: flex; justify-content: center; min-height: 100vh; background: #e8e8e8; }
+    body { transform-origin: top center; scale: min(1, calc(100vw / 794), calc(100vh / 1123)); margin: 0 auto; box-shadow: 0 0 60px rgba(0,0,0,0.15); }
+  }
+  .cover {
+    position: relative;
+    width: 794px; height: 1123px;
+    border: none; outline: none; box-shadow: none;
+  }
+  /* Layer 1 — fond : grille technique (opacite 2-3%, clip obligatoire) */
+  .layer1 {
+    position: absolute; inset: 0;
+    overflow: hidden;
+    z-index: 1;
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(to right,  rgba(51,70,80,0.03) 0 0.5px, transparent 0.5px 67px),
+      repeating-linear-gradient(to bottom, rgba(51,70,80,0.03) 0 0.5px, transparent 0.5px 67px);
+  }
+  /* Layer 2 — structure : ligne d'ancrage verticale ultra-epaisse */
+  .layer2 { position: absolute; inset: 0; z-index: 2; }
+  .anchor-line {
+    position: absolute;
+    left: 95px; top: 112px;
+    width: 8px; height: 899px;
+    background: var(--c-mid);
+  }
+  /* Layer 3 — contenu */
+  .layer3 { position: absolute; inset: 0; z-index: 3; }
+  .kicker {
+    position: absolute;
+    left: 145px; top: 168px;
+    font-size: 16pt; font-weight: 400;
+    letter-spacing: 3pt;
+    text-transform: uppercase;
+    color: var(--c-text);
+    opacity: 0.6;
+  }
+  .hero {
+    position: absolute;
+    left: 145px; top: 337px;
+    font-size: 52pt; font-weight: 900;
+    line-height: 1.15;
+    color: var(--c-text);
+    max-width: 580px;
+  }
+
+  .summary {
+    position: absolute;
+    left: 145px; top: 562px;
+    max-width: 460px;
+    font-size: 16.5pt; font-weight: 400;
+    line-height: 1.6;
+    color: var(--c-text);
+    opacity: 0.85;
+  }
+  .meta {
+    position: absolute;
+    left: 145px; top: 842px;
+    font-size: 17pt; font-weight: 400;
+    line-height: 1.55;
+    color: var(--c-text);
+  }
+  .meta .muted { color: var(--c-muted); }
+  .footer {
+    position: absolute;
+    left: 145px; top: 1032px;
+    font-size: 16pt; font-weight: 400;
+    letter-spacing: 3pt;
+    text-transform: uppercase;
+    color: var(--c-text);
+    opacity: 0.6;
+  }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <div class="layer1"><div class="grid"></div></div>
+    <div class="layer2"><div class="anchor-line"></div></div>
+    <div class="layer3">
+      <div class="kicker">Audit technique de compl&eacute;tude</div>
+      <div class="hero">YAHRIA OS<br>RUN-000019</div>
+      <div class="summary">
+        &Eacute;tat des lieux mesur&eacute; de la plateforme souveraine et de son
+        livrable de gestion h&ocirc;teli&egrave;re&nbsp;: 24 domaines couverts,
+        99 invariants actifs, 280 v&eacute;rifications vertes et six bloqueurs
+        production trac&eacute;s jusqu&rsquo;&agrave; leur fermeture.
+      </div>
+      <div class="meta">
+        Rapport d&rsquo;audit interne<br>
+        <span class="muted">Sessions R7 &rarr; R15 &middot; 7 septembre 2026</span>
+      </div>
+      <div class="footer">YAHRIA Code OS &middot; Preuves r&eacute;-ex&eacute;cutables</div>
+    </div>
+  </div>
+</body>
+</html>

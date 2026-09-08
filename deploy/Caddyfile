@@ -1,0 +1,23 @@
+# ═══════════════════════════════════════════════════════════════
+# YAHRIA — Caddy reverse proxy (TLS automatique Let's Encrypt)
+# Le domaine vient de l'env YAHRIA_DOMAIN (docker-compose.prod.yml).
+# WebSocket /ws proxifiée nativement (realtime YAHRIA).
+# ═══════════════════════════════════════════════════════════════
+
+{$YAHRIA_DOMAIN} {
+	encode gzip zstd
+
+	# En-têtes de sécurité de base
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# API versionnée — surface gouvernée (INV-230), aucun cache
+	header /api/v1/* Cache-Control "no-store"
+
+	# Reverse proxy vers l'app (Next.js + WebSocket realtime)
+	reverse_proxy app:3000
+}

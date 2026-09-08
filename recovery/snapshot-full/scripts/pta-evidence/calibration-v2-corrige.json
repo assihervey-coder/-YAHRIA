@@ -1,0 +1,30 @@
+{
+  "gate": "PTA-002/EVO-000025-behavioral-gate",
+  "version": "1.0",
+  "ts": "2026-09-07T23:17:56+00:00",
+  "label": "RUN-000023-corrige (7/7 vert)",
+  "target": "upload/RUN-000023-corrige",
+  "passed": true,
+  "verdict": "PASS",
+  "totalMs": 4805,
+  "stages": [
+    {
+      "stage": "DÉCOUVERTE",
+      "state": "PASS",
+      "detail": "1 fichier(s) de test : tests/test_api.py",
+      "ms": 32
+    },
+    {
+      "stage": "PYTEST",
+      "state": "PASS",
+      "detail": "pytest exit 0 — 7 passed, 1 warning in 2.18s",
+      "ms": 4772
+    },
+    {
+      "stage": "COMPORTEMENT",
+      "state": "PASS",
+      "detail": "7 sonde(s) comportementale(s) verte(s), 0 rouge(s)",
+      "ms": 0
+    }
+  ]
+}

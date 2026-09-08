@@ -1,0 +1,141 @@
+{
+  "meta": {
+    "generator": "scripts/r8-supremacy-fixtures.ts",
+    "pack": "R8",
+    "sealedAt": "2026-09-07T00:00:00.000Z"
+  },
+  "canonical": [
+    {
+      "input": {
+        "b": 1,
+        "a": {
+          "d": 2,
+          "c": [
+            3,
+            1
+          ]
+        }
+      },
+      "expected": "{\"a\":{\"c\":[3,1],\"d\":2},\"b\":1}"
+    },
+    {
+      "input": {
+        "a": 1
+      },
+      "expected": "{\"a\":1}"
+    },
+    {
+      "input": {
+        "x": [
+          1,
+          2,
+          3
+        ]
+      },
+      "expectedSha256": "401592ba6d3e44c4697ec7f6e2c8500d8114f2b1b14d49e8cc1c1fb547f01040"
+    }
+  ],
+  "merkle": {
+    "leaves": [
+      "d33c875e5ef904609fc49a4bcf548e6b78fba05cfc701d33da54b5b296b810a6",
+      "946a66a0bf248d73f74f6fcadbea8fe55fdab83ea68846265d03b6f8718e51c9",
+      "ecfb38d60e73859f7e6ea8e9d5df74da3bff4e4cf378bf28ee8b07c643cc888d",
+      "6cc53a491e067bc5a5ace49f06ad7fc32e500afc8419816a271553c09d2a4c27",
+      "94b58a16b1e87e614270853b0fce854fe235f8aa96e711441c8ba73498b7e73f",
+      "0f1aa1ec306de2e03a40cb89447b911c19360e8670a245ec1c11a2141e61492c",
+      "9c6e195e9372071b54804499e5d701ba94163641ef97383d5a2608b84f261ab5",
+      "f97787d89689bb630bb6b83044800e3337cefae93f8a374416da546dde15b203"
+    ],
+    "order": [
+      "EV-TEST-000001",
+      "EV-TEST-000002",
+      "EV-TEST-000003",
+      "EV-TEST-000004",
+      "EV-TEST-000005",
+      "EV-TEST-000006",
+      "EV-TEST-000007",
+      "EV-TEST-000008"
+    ],
+    "root": "67695746d704ad64d763a0e8b6b0c02c02f814f31d465403ed282c4304bdd588",
+    "leafCount": 8,
+    "sealHash": "06a2a52a0b7d8f0826c8ddcc4f39a2dba44bfe92ec2417ff9f6c98fcaef068fb",
+    "proofs": [
+      {
+        "index": 0,
+        "leafHash": "d33c875e5ef904609fc49a4bcf548e6b78fba05cfc701d33da54b5b296b810a6",
+        "path": [
+          {
+            "hash": "946a66a0bf248d73f74f6fcadbea8fe55fdab83ea68846265d03b6f8718e51c9",
+            "direction": "R"
+          },
+          {
+            "hash": "465ccee12f9f258c4e9f5ae4ef1ad7b0053909da01dca0f7195ed355a409355c",
+            "direction": "R"
+          },
+          {
+            "hash": "502a6479764d29f52140dad1af536e504bc80647d688206c19a4c635da6af393",
+            "direction": "R"
+          }
+        ],
+        "root": "67695746d704ad64d763a0e8b6b0c02c02f814f31d465403ed282c4304bdd588",
+        "valid": true
+      },
+      {
+        "index": 3,
+        "leafHash": "6cc53a491e067bc5a5ace49f06ad7fc32e500afc8419816a271553c09d2a4c27",
+        "path": [
+          {
+            "hash": "ecfb38d60e73859f7e6ea8e9d5df74da3bff4e4cf378bf28ee8b07c643cc888d",
+            "direction": "L"
+          },
+          {
+            "hash": "936130d47eaa025065f595cece7b583ee1dd2bb75cefb975a47e36b926044646",
+            "direction": "L"
+          },
+          {
+            "hash": "502a6479764d29f52140dad1af536e504bc80647d688206c19a4c635da6af393",
+            "direction": "R"
+          }
+        ],
+        "root": "67695746d704ad64d763a0e8b6b0c02c02f814f31d465403ed282c4304bdd588",
+        "valid": true
+      },
+      {
+        "index": 7,
+        "leafHash": "f97787d89689bb630bb6b83044800e3337cefae93f8a374416da546dde15b203",
+        "path": [
+          {
+            "hash": "9c6e195e9372071b54804499e5d701ba94163641ef97383d5a2608b84f261ab5",
+            "direction": "L"
+          },
+          {
+            "hash": "f6bdb17193d0495585ad29d510883a9e82553c71645d6ca65635db834f91a914",
+            "direction": "L"
+          },
+          {
+            "hash": "a045146c3a3cf384e825194d63d2f6199aeec2f4f9452db8100e2f51b4b4b97a",
+            "direction": "L"
+          }
+        ],
+        "root": "67695746d704ad64d763a0e8b6b0c02c02f814f31d465403ed282c4304bdd588",
+        "valid": true
+      }
+    ],
+    "auditIntact": {
+      "verdict": "SEALED_INTACT",
+      "anomalies": []
+    },
+    "auditTamper": {
+      "verdict": "TAMPERED",
+      "anomalies": [
+        {
+          "type": "HASH_MISMATCH",
+          "index": 5,
+          "evidenceUid": "EV-TEST-000006",
+          "detail": "slot 5 : hash présenté ffffffffffffffff… ≠ hash scellé 0f1aa1ec306de2e0… — contenu altéré"
+        }
+      ]
+    },
+    "tamperSlot": 5
+  }
+}

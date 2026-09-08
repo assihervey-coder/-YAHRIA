@@ -1,0 +1,24 @@
+{
+  "gate": "PTA-002/EVO-000025-behavioral-gate",
+  "version": "1.0",
+  "ts": "2026-09-07T23:17:51+00:00",
+  "label": "RUN-000023 scellé (5 tests POST rouges)",
+  "target": "db/workspaces/RUN-000023",
+  "passed": false,
+  "verdict": "FAIL",
+  "totalMs": 3072,
+  "stages": [
+    {
+      "stage": "DÉCOUVERTE",
+      "state": "PASS",
+      "detail": "1 fichier(s) de test : tests/test_api.py",
+      "ms": 0
+    },
+    {
+      "stage": "PYTEST",
+      "state": "FAIL",
+      "detail": "pytest exit 1 — 5 failed, 2 passed, 1 warning in 1.30s — FAILED tests/test_api.py::test_webhook_handler_missing_signature - assert 500... | FAILED tests/test_api.py::test_webhook_handler_invalid_signature - assert 500... | 5 failed, 2 passed, 1 warning in 1.30s",
+      "ms": 3072
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "gate": "PTA-001/EVO-000016-boot-gate",
+  "version": "1.0",
+  "ts": "2026-09-07T21:26:24+00:00",
+  "label": "RUN-000021 original (44 îlots)",
+  "target": "upload/yahria-RUN-000021.zip",
+  "passed": false,
+  "verdict": "FAIL",
+  "totalMs": 6,
+  "openapi": null,
+  "stages": [
+    {
+      "stage": "INVENTAIRE",
+      "state": "PASS",
+      "detail": "stack détectée PYTHON — 11 .py, 0 .js, 0 statiques",
+      "ms": 0
+    },
+    {
+      "stage": "STRUCTURE",
+      "state": "FAIL",
+      "detail": "44 îlot(s) non importable(s) : ACHATS, LOGISTIQUE & STOCKS (SUPPLY CHAIN)/1. Achats centralisés (Siège) & décentralisés (Hôtels) (code Python hors module — îlot non importable, extension . Achats centralisés (Si); ACHATS, LOGISTIQUE & STOCKS (SUPPLY CHAIN)/2. Gestion des stocks multi-sites (code Python hors module — îlot non importable, extension . Gestion des stocks mul); ACHATS, LOGISTIQUE & STOCKS (SUPPLY CHAIN)/3. Inventaires & Pertes (code Python hors module — îlot non importable, extension . Inventaires & Pertes); ACHATS, LOGISTIQUE & STOCKS (SUPPLY CHAIN)/4. Réception des marchandises (code Python hors module — îlot non importable, extension . Réception des marchand); ERP - CHAÎNE HÔTELIÈRE [GROUPE] (Architecture avec Hub API 8.3 strictement intégré) (code Python hors module — îlot non importable, extension .3 strictement intégré)); GESTION DES RÉSERVATIONS & SÉJOURS (PMS INTÉGRÉ)/1. Réservations (centralisées ou par hôtel) (code Python hors module — îlot non importable, extension . Réservations (centrali) … (+38)",
+      "ms": 1
+    }
+  ]
+}

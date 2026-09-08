@@ -1,0 +1,4 @@
+{
+  "/api/yahria/system/route": "app/api/yahria/system/route.js",
+  "/page": "app/page.js"
+}

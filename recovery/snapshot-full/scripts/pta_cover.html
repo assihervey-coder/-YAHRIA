@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  @page { size: 794px 1123px; margin: 0; }
+  :root {
+    --c-bg: #ffffff;
+    --c-accent: #3681a6;
+    --c-text: #1a1b1c;
+    --c-muted: #6f7578;
+    --c-mid: #334650;
+    --c-surface: #e4e7e8;
+  }
+  html, body {
+    margin: 0; padding: 0;
+    width: 794px; height: 1123px;
+    background: var(--c-bg);
+    color: var(--c-text);
+    font-family: 'Inter', 'Liberation Sans', Arial, sans-serif;
+  }
+  @media screen {
+    html { height: auto; display: flex; justify-content: center; min-height: 100vh; background: #e8e8e8; }
+    body { transform-origin: top center; scale: min(1, calc(100vw / 794), calc(100vh / 1123)); margin: 0 auto; box-shadow: 0 0 60px rgba(0,0,0,0.15); }
+  }
+  .cover {
+    position: relative;
+    width: 794px; height: 1123px;
+    border: none; outline: none; box-shadow: none;
+  }
+  /* Layer 1 — fond : grille technique (opacite 2-3%, clip obligatoire) */
+  .layer1 {
+    position: absolute; inset: 0;
+    overflow: hidden;
+    z-index: 1;
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      repeating-linear-gradient(to right,  rgba(51,70,80,0.03) 0 0.5px, transparent 0.5px 67px),
+      repeating-linear-gradient(to bottom, rgba(51,70,80,0.03) 0 0.5px, transparent 0.5px 67px);
+  }
+  /* Layer 2 — structure : ligne d'ancrage verticale ultra-epaisse */
+  .layer2 { position: absolute; inset: 0; z-index: 2; }
+  .anchor-line {
+    position: absolute;
+    left: 95px; top: 112px;
+    width: 8px; height: 899px;
+    background: var(--c-mid);
+  }
+  /* Layer 3 — contenu */
+  .layer3 { position: absolute; inset: 0; z-index: 3; }
+  .kicker {
+    position: absolute;
+    left: 145px; top: 168px;
+    font-size: 16pt; font-weight: 400;
+    letter-spacing: 3pt;
+    text-transform: uppercase;
+    color: var(--c-text);
+    opacity: 0.6;
+  }
+  .hero {
+    position: absolute;
+    left: 145px; top: 320px;
+    font-size: 50pt; font-weight: 900;
+    line-height: 1.15;
+    color: var(--c-text);
+    max-width: 580px;
+  }
+
+  .summary {
+    position: absolute;
+    left: 145px; top: 566px;
+    max-width: 470px;
+    font-size: 16pt; font-weight: 400;
+    line-height: 1.6;
+    color: var(--c-text);
+    opacity: 0.85;
+  }
+  .meta {
+    position: absolute;
+    left: 145px; top: 846px;
+    font-size: 17pt; font-weight: 400;
+    line-height: 1.55;
+    color: var(--c-text);
+  }
+  .meta .muted { color: var(--c-muted); }
+  .footer {
+    position: absolute;
+    left: 145px; top: 1032px;
+    font-size: 16pt; font-weight: 400;
+    letter-spacing: 3pt;
+    text-transform: uppercase;
+    color: var(--c-text);
+    opacity: 0.6;
+  }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <div class="layer1"><div class="grid"></div></div>
+    <div class="layer2"><div class="anchor-line"></div></div>
+    <div class="layer3">
+      <div class="kicker">Protocole de test d&rsquo;apprentissage</div>
+      <div class="hero">PTA-001<br>Le boot du premier coup</div>
+      <div class="summary">
+        YAHRIA a appris &agrave; se mesurer&nbsp;; il doit apprendre &agrave; ne plus
+        r&eacute;p&eacute;ter son erreur. Une d&eacute;cision humaine arme la porte de boot
+        (EVO-000016), un RUN-000022 est g&eacute;n&eacute;r&eacute; sous cette r&egrave;gle&nbsp;:
+        s&rsquo;il d&eacute;marre au premier coup, l&rsquo;apprentissage sera prouv&eacute;, pas
+        d&eacute;clar&eacute;.
+      </div>
+      <div class="meta">
+        Protocole PTA-001 &middot; YAHRIA Code OS<br>
+        <span class="muted">EVO-000020 PROMOTED &middot; EVO-000016 d&eacute;cision &middot; 8 septembre 2026</span>
+      </div>
+      <div class="footer">YAHRIA Code OS &middot; Prouv&eacute;, pas d&eacute;clar&eacute;</div>
+    </div>
+  </div>
+</body>
+</html>
