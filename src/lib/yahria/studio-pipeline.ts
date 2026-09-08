@@ -27,6 +27,10 @@ import { isBootGateActive, runBootGate, type BootGateReport } from './boot-gate'
 import { isBehavioralGateActive, runBehavioralGate, type BehavioralGateReport } from './behavioral-gate';
 import { isCompletenessGateActive, runCompletenessGate, type CompletenessGateReport } from './completeness-gate';
 import { runRepairCycle } from './run-repair-loop';
+import {
+  isBudgetPerGateActive, newRepairBudget, repairBudgetAvailable,
+  consumeRepairBudget, repairCyclesUsed,
+} from './repair-budget';
 
 const WORKSPACE_ROOT = path.join(process.cwd(), 'db', 'workspaces');
 const MAX_DEPENDENCY_SOURCES = 3;
@@ -50,7 +54,8 @@ export const STUDIO_EVENTS = {
   BEHAVIORALGATE_RESULT: 'studio.behavioralgate.result',
   // EVO-000026 — porte de complétude (aucun livrable partiel ne quitte GENERATING)
   COMPLETENESSGATE_RESULT: 'studio.completenessgate.result',
-  // EVO-000028 — boucle de réparation ciblée au niveau run (1 cycle, ≤3 fichiers)
+  // EVO-000028 — boucle de réparation ciblée au niveau run (budget gouverné
+  // EVO-000030 : ≤1 cycle par porte, ≤2 cycles/run ; legacy 1 cycle/run sinon)
   REPAIR_CYCLE: 'studio.repair.cycle',
   // R11 — preuve live (sandbox execution)
   LIVE_STARTED: 'studio.live.started',
@@ -199,7 +204,11 @@ async function runStudioPipeline(runId: string): Promise<void> {
     let retries = 0;
     let totalBytes = 0;
     let totalGenMs = 0;
-    let repairUsed = false; // EVO-000028 : budget UNE SEULE boucle de réparation par run
+    // EVO-000030 — budget de réparation PAR PORTE (≤1 cycle/porte, ≤2 cycles/run)
+    // si EVO-000030 est PROMOTED ; sinon budget legacy EVO-000028 (1 cycle/run total).
+    // Le registre EST l'interrupteur (INV-227) — un ROLLED_BACK resta le budget
+    // 1 cycle/run SANS redéploiement ; classification INV-210 et ≤3 fichiers intacts.
+    const repairBudget = newRepairBudget(await isBudgetPerGateActive());
 
     for (const entry of blueprint) {
       const fileRow = await db.generatedFile.findFirst({ where: { runId, path: entry.path } });
@@ -329,10 +338,11 @@ async function runStudioPipeline(runId: string): Promise<void> {
         `Studio ${runUid} : porte de boot (EVO-000016) ${bootGate.passed ? 'PASS' : 'FAIL'} — ${bootGate.stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`, runUid,
         { passed: bootGate.passed, totalMs: bootGate.totalMs, stages: bootGate.stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 220) })) });
       if (!bootGate.passed) {
-        // EVO-000028 — boucle de réparation ciblée : 1 cycle/run, ≤3 fichiers, 1 tentative
-        // chacun ; MODÈLE uniquement — un échec INFRA n'est JAMAIS réparé (INV-210) ; armée
-        // uniquement si EVO-000028 est PROMOTED (décision humaine = interrupteur, INV-227).
-        const repair = repairUsed ? null : await runRepairCycle({
+        // EVO-000028 — boucle de réparation ciblée, budget gouverné EVO-000030 :
+        // ≤1 cycle par PORTE (≤2 cycles/run) ou legacy 1 cycle/run ; ≤3 fichiers,
+        // 1 tentative chacun ; MODÈLE uniquement — un échec INFRA n'est JAMAIS
+        // réparé (INV-210) ; armée uniquement si EVO-000028 est PROMOTED (INV-227).
+        const repair = repairBudgetAvailable(repairBudget, 'BOOT') ? null : await runRepairCycle({
           runId, runUid, traceId, gateKind: 'BOOT',
           failStages: bootGate.stages.filter((s) => s.state === 'FAIL').map((s) => ({ stage: s.stage, detail: s.detail })),
           brief: run.brief, stack: tree.stack, blueprint,
@@ -340,7 +350,7 @@ async function runStudioPipeline(runId: string): Promise<void> {
           workspaceDir,
         });
         if (repair?.attempted) {
-          repairUsed = true;
+          consumeRepairBudget(repairBudget, 'BOOT');
           retries += repair.addedAttempts;
           totalGenMs += repair.addedMs;
           totalBytes += repair.addedBytes;
@@ -371,8 +381,9 @@ async function runStudioPipeline(runId: string): Promise<void> {
         `Studio ${runUid} : porte comportementale (EVO-000025) ${behavioralGate.passed ? 'PASS' : 'FAIL'} — ${behavioralGate.stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`, runUid,
         { passed: behavioralGate.passed, totalMs: behavioralGate.totalMs, stages: behavioralGate.stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 220) })) });
       if (!behavioralGate.passed) {
-        // EVO-000028 — boucle de réparation ciblée (si le budget 1 cycle/run est resté intact)
-        const repair = repairUsed ? null : await runRepairCycle({
+        // EVO-000028 — boucle de réparation ciblée (budget gouverné EVO-000030 :
+        // la porte comportementale garde son PROPRE cycle, même après un cycle BOOT)
+        const repair = repairBudgetAvailable(repairBudget, 'BEHAVIORAL') ? null : await runRepairCycle({
           runId, runUid, traceId, gateKind: 'BEHAVIORAL',
           failStages: behavioralGate.stages.filter((s) => s.state === 'FAIL').map((s) => ({ stage: s.stage, detail: s.detail })),
           brief: run.brief, stack: tree.stack, blueprint,
@@ -380,7 +391,7 @@ async function runStudioPipeline(runId: string): Promise<void> {
           workspaceDir,
         });
         if (repair?.attempted) {
-          repairUsed = true;
+          consumeRepairBudget(repairBudget, 'BEHAVIORAL');
           retries += repair.addedAttempts;
           totalGenMs += repair.addedMs;
           totalBytes += repair.addedBytes;
@@ -404,7 +415,7 @@ async function runStudioPipeline(runId: string): Promise<void> {
 
     // ── SEALED — preuve de scellement + stats finales ────────────────
     await transitionRun(runId, runUid, 'VERIFYING', 'SEALED');
-    const stats = { files: blueprint.length, generated, failed, retries, bytes: totalBytes, genMs: totalGenMs, ...(completenessGate ? { completenessGate: { passed: completenessGate.passed, classification: completenessGate.classification, totalMs: completenessGate.totalMs, recovered: completenessGate.recovered.length, stillFailed: completenessGate.stillFailed.length } } : {}), ...(bootGate ? { bootGate: { passed: bootGate.passed, totalMs: bootGate.totalMs, stages: bootGate.stages.map((s) => ({ stage: s.stage, state: s.state })) } } : {}), ...(behavioralGate ? { behavioralGate: { passed: behavioralGate.passed, totalMs: behavioralGate.totalMs, stages: behavioralGate.stages.map((s) => ({ stage: s.stage, state: s.state })) } } : {}) };
+    const stats = { files: blueprint.length, generated, failed, retries, bytes: totalBytes, genMs: totalGenMs, repairCycles: repairCyclesUsed(repairBudget), repairBudgetMode: repairBudget.perGate ? 'PER-GATE (EVO-000030)' : 'LEGACY (EVO-000028)', ...(completenessGate ? { completenessGate: { passed: completenessGate.passed, classification: completenessGate.classification, totalMs: completenessGate.totalMs, recovered: completenessGate.recovered.length, stillFailed: completenessGate.stillFailed.length } } : {}), ...(bootGate ? { bootGate: { passed: bootGate.passed, totalMs: bootGate.totalMs, stages: bootGate.stages.map((s) => ({ stage: s.stage, state: s.state })) } } : {}), ...(behavioralGate ? { behavioralGate: { passed: behavioralGate.passed, totalMs: behavioralGate.totalMs, stages: behavioralGate.stages.map((s) => ({ stage: s.stage, state: s.state })) } } : {}) };
     await db.generationRun.update({
       where: { id: runId },
       data: { workspacePath: `db/workspaces/${runUid}`, zipPath, stats: JSON.stringify(stats) },

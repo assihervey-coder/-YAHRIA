@@ -50,6 +50,16 @@
 //         + modules internes importés) : sign top-level déjà définies,
 //         à importer TELLES QUELLES — plus jamais « PaymentInitiate »
 //         importé ici mais défini nulle part (dérive RUN-000013/000022).
+//
+// EVO-000030 (PROMOTED par HUMAN:reviewer — budget par porte + contrat
+// pydantic v2, causes prouvées it.9 RUN-000027/28) : le BUDGET de cycles
+// est gouverné par repair-budget.ts — ≤1 cycle par PORTE, ≤2 cycles/run
+// (legacy 1 cycle/run si EVO-000030 ROLLED_BACK) ; le contrat pydantic v2
+// (model_validate/from_attributes/model_dump) et la ligne « le pytest EST
+// le contrat comportemental » enrichissent les prompts via studio.ts et
+// golden-exemplar.ts. Le MÉCANISME de cette boucle est INCHANGÉ : ≤3
+// fichiers, 1 tentative/fichier, MODÈLE uniquement (INV-210), attempts
+// honnêtes, bilan scellé par cycle.
 // ═══════════════════════════════════════════════════════════════════
 
 import { createHash } from 'crypto';

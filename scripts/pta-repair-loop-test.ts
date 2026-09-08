@@ -1,10 +1,12 @@
 #!/usr/bin/env bun
 // ═══════════════════════════════════════════════════════════════════
-// YAHRIA — TESTS BOUCLE DE RÉPARATION CIBLÉE (EVO-000028 + EVO-000029)
-// PTA-002 it.9 · Tests unitaires de run-repair-loop.ts : armement réel,
-// ciblage PUR (détails de portes RÉELS it.7 + détails FIDÈLES EVO-000029),
-// contrats inter-fichiers (RC3), résolution d'imports, classification
-// INV-210, drills d'armement sous registre temporairement PROMOTED.
+// YAHRIA — TESTS BOUCLE DE RÉPARATION CIBLÉE (EVO-000028 + EVO-000029
+// + EVO-000030) — PTA-002 it.10 · Tests unitaires de run-repair-loop.ts :
+// armement réel, ciblage PUR (détails de portes RÉELS it.7 + détails
+// FIDÈLES EVO-000029), contrats inter-fichiers (RC3), résolution
+// d'imports, classification INV-210, budget PAR PORTE + contrat pydantic
+// v2 + contrat comportemental (EVO-000030), drills d'armement sous
+// registre temporairement PROMOTED / ROLLED_BACK (promotion-safe).
 //   bun run scripts/pta-repair-loop-test.ts
 // PROMOTION-SAFE : l'état réel du registre est PRÉSERVÉ à l'identique
 // (les drills manipulent l'état puis le restaurent EXACTEMENT — la
@@ -43,7 +45,7 @@ const TREE = [
   'tests/__init__.py', 'tests/test_api.py', 'requirements.txt',
 ];
 
-console.log('\nPTA-002 · Boucle de réparation ciblée (EVO-000028 + EVO-000029) — tests unitaires\n');
+console.log('\nPTA-002 · Boucle de réparation ciblée (EVO-000028 + EVO-000029 + EVO-000030) — tests unitaires\n');
 
 // ── RR-T1. ARMEMENT GOUVERNÉ — le registre EST l'interrupteur ──────
 const stateBefore = await db.evolutionProposal.findUnique({ where: { proposalUid: RUN_REPAIR_EVO_UID } });
@@ -331,10 +333,77 @@ const t92 = verifyGeneratedContent('import hashlib\nimport hmac\nfrom config imp
 check('T9.2 source légitime identique hors bleed → acceptée',
   t92.ok === true, t92.note);
 
+// ── RR-T10. EVO-000030 — BUDGET PAR PORTE + CONTRAT PYDANTIC V2 ─────
+// (protocole signé : budget repairUsedBoot/repairUsedBehavioral ≤1 cycle
+//  chacun, ≤2 cycles/run ; STACK_HINTS enrichi SEULEMENT si PROMOTED ;
+//  ROLLED_BACK → budget legacy 1 cycle/run SANS redéploiement)
+const rb = await import('../src/lib/yahria/repair-budget');
+const state30Before = await db.evolutionProposal.findUnique({ where: { proposalUid: rb.REPAIR_BUDGET_EVO_UID } });
+const promoted30Real = state30Before?.state === 'PROMOTED';
+check(`T10.1 isBudgetPerGateActive() reflète le registre RÉEL (EVO-000030 ${state30Before?.state} en DB)`,
+  (await rb.isBudgetPerGateActive()) === promoted30Real);
+
+// budget PAR PORTE : boot réparé PUIS comportemental réparable dans le MÊME run
+const bpg = rb.newRepairBudget(true);
+check('T10.2 budget PAR PORTE : cycle BOOT disponible au départ', rb.repairBudgetAvailable(bpg, 'BOOT'));
+rb.consumeRepairBudget(bpg, 'BOOT');
+check('T10.3 cycle BOOT consommé → 2e cycle BOOT bloqué (≤1 cycle/porte)', !rb.repairBudgetAvailable(bpg, 'BOOT'));
+check('T10.4 boot réparé PUIS comportemental réparable dans le MÊME run (cascade it.9 RUN-000027 corrigée)',
+  rb.repairBudgetAvailable(bpg, 'BEHAVIORAL'));
+rb.consumeRepairBudget(bpg, 'BEHAVIORAL');
+check('T10.5 run total borné : 2 cycles consommés → plus AUCUN budget (≤2 cycles/run)',
+  !rb.repairBudgetAvailable(bpg, 'BOOT') && !rb.repairBudgetAvailable(bpg, 'BEHAVIORAL') && rb.repairCyclesUsed(bpg) === 2);
+
+// budget LEGACY (EVO-000028) : 1 cycle/run TOTAL — le mode restauré par un ROLLED_BACK
+const legacy = rb.newRepairBudget(false);
+rb.consumeRepairBudget(legacy, 'BOOT');
+check('T10.6 budget LEGACY : 1 cycle/run total — BOOT consommé → comportemental bloqué AUSSI',
+  !rb.repairBudgetAvailable(legacy, 'BEHAVIORAL') && rb.repairCyclesUsed(legacy) === 1);
+
+// contrat pydantic v2 — STACK_HINTS enrichi SEULEMENT si PROMOTED (protocole point 3)
+const pvOn = rb.pydanticV2StackAddendum(true, 'PYTHON');
+check('T10.7 STACK_HINTS PYTHON si PROMOTED : model_validate + from_attributes + model_dump présents (API v1 proscrites)',
+  pvOn.includes('model_validate') && pvOn.includes('from_attributes') && pvOn.includes('model_dump')
+  && pvOn.includes('NEVER Model.from_orm') && pvOn.includes('NEVER .dict()'), pvOn.slice(0, 110));
+check('T10.8 inerte si non PROMOTED → addendum VIDE (prompt système inchangé, AUCUN autre changement)',
+  rb.pydanticV2StackAddendum(false, 'PYTHON') === '');
+check('T10.9 hors PYTHON → aucun addendum (STACK_HINTS des autres stacks intacts)',
+  rb.pydanticV2StackAddendum(true, 'NODE') === '' && rb.pydanticV2StackAddendum(true, 'NEXTJS') === '');
+
+// contrat comportemental — ligne few-shot (protocole point 4)
+const bcOn = rb.behavioralContractExtra(true, 'PYTHON');
+check('T10.10 contrat few-shot : le pytest EST le contrat comportemental (payloads + status codes exacts)',
+  bcOn.includes('BEHAVIORAL contract') && bcOn.includes('payloads') && bcOn.includes('status codes'), bcOn.slice(0, 100));
+check('T10.11 contrat comportemental inerte si non PROMOTED ou hors PYTHON',
+  rb.behavioralContractExtra(false, 'PYTHON') === '' && rb.behavioralContractExtra(true, 'NODE') === '');
+
+// drill promotion-safe EVO-000030 : ROLLED_BACK → budget legacy restauré SANS redéploiement
+let drill30Off = false, drill30BackOn = false, restored30 = false;
+try {
+  await db.evolutionProposal.update({ where: { proposalUid: rb.REPAIR_BUDGET_EVO_UID }, data: { state: 'ROLLED_BACK' } });
+  rb.resetBudgetPerGateCache();
+  drill30Off = (await rb.isBudgetPerGateActive()) === false;
+  await db.evolutionProposal.update({ where: { proposalUid: rb.REPAIR_BUDGET_EVO_UID }, data: { state: 'PROMOTED' } });
+  rb.resetBudgetPerGateCache();
+  drill30BackOn = (await rb.isBudgetPerGateActive()) === true;
+} finally {
+  // PROMOTION-SAFE : l'état PRÉ-DRILL est restauré à l'identique (INV-227)
+  await db.evolutionProposal.update({
+    where: { proposalUid: rb.REPAIR_BUDGET_EVO_UID },
+    data: { state: state30Before?.state ?? 'UNDER_REVIEW' },
+  });
+  rb.resetBudgetPerGateCache();
+  const back30 = await db.evolutionProposal.findUnique({ where: { proposalUid: rb.REPAIR_BUDGET_EVO_UID } });
+  restored30 = back30?.state === state30Before?.state;
+}
+check('T10.12 drill ROLLED_BACK : budget PAR PORTE désarmé sans redéploiement (legacy 1 cycle/run restauré)', drill30Off);
+check('T10.13 drill re-PROMOTED : budget PAR PORTE ré-armé sans redéploiement', drill30BackOn);
+check(`T10.14 état EXACT restauré après le drill (${state30Before?.state} — décision humaine intacte, INV-227)`, restored30);
+
 await captureAndPersist({
   category: 'POLICY', criticality: 'STANDARD', actorType: 'SYSTEM', actorId: 'pta-repair-loop-test',
-  claim: `Drill armement EVO-000028+000029 : boucle armée puis état ${stateBefore?.state} restauré à l'identique (${passed} PASS / ${failed} FAIL) — décision humaine intacte (INV-227)`,
-  payload: { proposalUid: RUN_REPAIR_EVO_UID, statePreserved: stateBefore?.state, passed, failed, drillArmed, drillInfra, drillNoTarget, restoredOk },
+  claim: `Drill armement EVO-000028+000029+000030 : boucle armée, budget par porte + pydantic v2 vérifiés, états ${stateBefore?.state}/${state30Before?.state} restaurés à l'identique (${passed} PASS / ${failed} FAIL) — décisions humaines intactes (INV-227)`,
+  payload: { proposalUid: RUN_REPAIR_EVO_UID, proposal30Uid: 'EVO-000030', statePreserved: stateBefore?.state, state30Preserved: state30Before?.state, passed, failed, drillArmed, drillInfra, drillNoTarget, restoredOk, drill30Off, drill30BackOn, restored30 },
 });
 
 console.log(`\n═ Résultat : ${passed} PASS / ${failed} FAIL ═\n`);

@@ -572,6 +572,17 @@ STRICT OUTPUT RULES:
 - Match the declared purpose and key points exactly.
 - Keep the file focused: ${ctx.stack} conventions, clean structure.${STACK_HINTS[ctx.stack] ? ` STACK CONVENTIONS: ${STACK_HINTS[ctx.stack]}` : ''}`;
 
+  // EVO-000030 — contrat pydantic v2 : STACK_HINTS PYTHON enrichi
+  // UNIQUEMENT si EVO-000030 est PROMOTED (registre = interrupteur,
+  // INV-227) ; ROLLED_BACK → prompt legacy inchangé SANS redéploiement.
+  // AUCUN autre changement du prompt système.
+  try {
+    const { isBudgetPerGateActive, pydanticV2StackAddendum } = await import('./repair-budget');
+    system += pydanticV2StackAddendum(await isBudgetPerGateActive(), ctx.stack);
+  } catch {
+    // gouvernance indisponible → prompt legacy inchangé
+  }
+
   // EVO-000027 — few-shot exemplaire doré : addendum (contrat + exemplaire)
   // ajouté au prompt système UNIQUEMENT si armé (EVO-000027 PROMOTED).
   // AUCUN autre changement : retries, vérification S1 et portes intacts.

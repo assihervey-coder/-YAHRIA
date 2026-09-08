@@ -197,7 +197,18 @@ export async function goldenSystemAddendum(stack: string, entryPath: string, pur
   if (!(await isGoldenFewShotActive())) return '';
 
   const isPython = stack === 'PYTHON';
-  const contract = isPython ? `${GENERIC_CONTRACT}\n${PYTHON_CONTRACT_EXTRA}` : GENERIC_CONTRACT;
+  let contract = isPython ? `${GENERIC_CONTRACT}\n${PYTHON_CONTRACT_EXTRA}` : GENERIC_CONTRACT;
+
+  // EVO-000030 — contrat comportemental : le fichier pytest EST le contrat
+  // (payloads et status codes exacts) — ligne ajoutée UNIQUEMENT si
+  // EVO-000030 est PROMOTED (même garde que le budget par porte, INV-227).
+  // Inerte hors PYTHON (pytest est un outil Python, INV-215).
+  try {
+    const { isBudgetPerGateActive, behavioralContractExtra } = await import('./repair-budget');
+    contract += behavioralContractExtra(await isBudgetPerGateActive(), stack);
+  } catch {
+    // gouvernance indisponible → contrat legacy inchangé
+  }
 
   let body = `\n\nGOLDEN CONTRACT:\n${contract}`;
 
