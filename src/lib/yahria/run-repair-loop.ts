@@ -77,6 +77,31 @@
 //   Gouverné par isDependencyClosureActive() (registre = interrupteur,
 //   INV-227) ; ROLLED_BACK → ordre et bornes EVO-000029 EXACTS
 //   (co-cibles d'abord, 3 / 2400) sans redéploiement.
+//
+// EVO-000032 (PROMOTED par HUMAN:reviewer — contrats de REGISTRE + fidélité
+// BOOT totale, causes restantes it.11 prouvées par reproduction vivante :
+// RUN-000042 la fabrique enregistre « notch » alors que le contrat de test
+// envoie « notchpay » — extractPythonContracts STRICT top-level rendait les
+// clés indentées de GATEWAYS = { INVISIBLES ; RUN-000044 pesapal.py:10
+// jamais ciblé — le tail 1200 perdait le début du traceback et le parseur
+// confondait importlib/__init__.py stdlib avec gateways/__init__.py) :
+//   REG — contrats de registre : une ligne top-level se terminant par '{'
+//         ou '[' (ou ': {') capture les lignes indentées de continuation
+//         JUSQU'À la fermeture, borné ≤8 lignes / 110 car./ligne — les
+//         clés de fabrique (« notch » : NotchPayGateway) entrent au contrat
+//         (génération ET réparation via buildSiblingContracts) ; défaut
+//         sans opts = extraction STRICTE signée EXACTE (rollback) ;
+//   BF-1 — ciblage BOOT en MATCH STRICT : les frames du traceback ne
+//         résolvent que des chemins DE L'ARBRE (relatifs ou sous
+//         workspaceDir) — « importlib/__init__.py » stdlib n'est plus
+//         confondu avec gateways/__init__.py, <frozen …> et site-packages
+//         jamais ciblés ; le budget ≤3 va aux vraies frames ;
+//   BF-2 — boot-gate.ts conserve le stderr en TÊTE (800 car. — frames
+//         d'ouverture) + QUEUE (1200 car. — ImportError finale) au lieu
+//         du tail seul.
+//   Gouverné par isRegistryContractsActive() + isBootFidelityActive()
+//   (registre = interrupteur, INV-227) ; ROLLED_BACK → extraction STRICTE
+//   + tail seul + ciblage basename signé EVO-000029, sans redéploiement.
 // ═══════════════════════════════════════════════════════════════════
 
 import { createHash } from 'crypto';
@@ -87,6 +112,7 @@ import { captureAndPersist } from './evidence-store';
 import { emitYahriaEvent } from './realtime';
 import { classifyFailure } from './completeness-gate';
 import { generateFileContent, type GenerationContext, type BlueprintEntry } from './studio';
+import { isBootFidelityActive } from './boot-gate';
 
 export const RUN_REPAIR_EVO_UID = 'EVO-000028';
 
@@ -148,6 +174,37 @@ export function resetDependencyClosureCache(): void {
   closureCache = null;
 }
 
+// ── RR-1 ter. ARMEMENT EVO-000032 — contrats de registre ────────────
+
+export const REGISTRY_CONTRACTS_EVO_UID = 'EVO-000032';
+
+let registryCache: { value: boolean; at: number } | null = null;
+
+/**
+ * EVO-000032 (moitié REG) — les contrats de REGISTRE (corps indenté des
+ * littéraux dict/list top-level : clés de fabrique GATEWAYS = { … }) ne
+ * sont actifs QUE si la proposition est PROMOTED (registre = interrupteur,
+ * INV-227) ; registre indisponible → extraction STRICTE signée (jamais
+ * active par accident).
+ */
+export async function isRegistryContractsActive(): Promise<boolean> {
+  if (registryCache && Date.now() - registryCache.at < ACTIVE_TTL_MS) return registryCache.value;
+  let value = false;
+  try {
+    const p = await db.evolutionProposal.findUnique({ where: { proposalUid: REGISTRY_CONTRACTS_EVO_UID } });
+    value = p?.state === 'PROMOTED';
+  } catch {
+    value = false;
+  }
+  registryCache = { value, at: Date.now() };
+  return value;
+}
+
+/** Invalidation forcée du cache d'armement EVO-000032/REG (tests, rollback drill). */
+export function resetRegistryContractsCache(): void {
+  registryCache = null;
+}
+
 // ── RR-2. TYPES ─────────────────────────────────────────────────────
 
 export interface RepairTarget {
@@ -168,6 +225,10 @@ export interface RepairTargetingInput {
   treePaths: string[];
   /** fichier → modules importés résolus dans l'arbre (résolu par l'appelant depuis la DB) */
   importsByFile?: Record<string, string[]>;
+  /** EVO-000032 (BF-1) — frames boot résolues en match STRICT contre l'arbre */
+  bootFidelity?: boolean;
+  /** répertoire workspace — les frames absolues hors workspaceDir sont exclues */
+  workspaceDir?: string;
 }
 
 export interface RepairCycleInput {
@@ -257,6 +318,31 @@ function moduleToTreePath(mod: string, treePaths: string[]): string | null {
 
 const ENTRY_CANDIDATES = ['main.py', 'app.py', 'server.py'];
 
+/**
+ * EVO-000032 (BF-1) — résolution STRICTE d'une frame « File "…", line N »
+ * vers un chemin de l'arbre planifié. Une frame ne résout que si :
+ *   — ce n'est PAS une frame d'interpréteur (« <frozen …> ») ;
+ *   — son chemin est RELATIF (py_compile) ou sous workspaceDir (boot
+ *     uvicorn) — site-packages, /home/z/.local/… et <frozen …> sont
+ *     JAMAIS résolus ;
+ *   — le chemin relatif correspond EXACTEMENT à un chemin planifié
+ *     (jamais inventé, INV-120).
+ * Leçon RUN-000044 : « importlib/__init__.py » stdlib n'est plus confondu
+ * avec gateways/__init__.py — le budget ≤3 va aux vraies frames.
+ */
+function resolveFrameToTreePath(framePath: string, treePaths: string[], workspaceDir?: string): string | null {
+  if (framePath.startsWith('<')) return null;
+  let rel: string | null = null;
+  if (workspaceDir) {
+    const root = workspaceDir.endsWith('/') ? workspaceDir : `${workspaceDir}/`;
+    if (framePath.startsWith(root)) rel = framePath.slice(root.length);
+  } else if (!framePath.startsWith('/')) {
+    rel = framePath;
+  }
+  if (!rel) return null;
+  return treePaths.find((p) => p === rel) ?? null;
+}
+
 /** Candidats racine pour un échec de boot : module uvicorn cité + entrées canoniques présentes. */
 function bootEntryCandidates(detail: string, treePaths: string[]): string[] {
   const out: string[] = [];
@@ -323,10 +409,20 @@ export function mapGateNotesToTargets(input: RepairTargetingInput): RepairTarget
       // (b) EVO-000029 RC1 — traceback réel (stderr capté dès le spawn) :
       //     frames « File "…/xxx.py", line N » résolues dans l'arbre,
       //     ordre d'apparition ; les frames stdlib/uvicorn ne résolvent PAS
-      //     (hors arbre → ignorées, INV-120)
+      //     (hors arbre → ignorées, INV-120).
+      //     EVO-000032 (BF-1) — quand la fidélité BOOT est PROMOTED, la
+      //     résolution est STRICTE (resolveFrameToTreePath) : les frames
+      //     stdlib/site-packages ne sont plus confondues avec l'arbre via
+      //     leur basename (importlib/__init__.py ≠ gateways/__init__.py) ;
+      //     sans bootFidelity → comportement signé EVO-000029 EXACT.
       for (const m of d.matchAll(/File\s+"([^"]+\.py)",\s*line\s+(\d+)/g)) {
-        const base = m[1].split('/').pop() ?? m[1];
-        push(base, `traceback boot — ${base}:${m[2]} (frame de l'échec)`);
+        if (input.bootFidelity) {
+          const hit = resolveFrameToTreePath(m[1], input.treePaths, input.workspaceDir);
+          if (hit) pushResolved(hit, `traceback boot — ${hit}:${m[2]} (frame de l'échec, arbre)`);
+        } else {
+          const base = m[1].split('/').pop() ?? m[1];
+          push(base, `traceback boot — ${base}:${m[2]} (frame de l'échec)`);
+        }
       }
       // (c) modules manquants / symboles rompus (contrat inter-fichiers RC3)
       for (const m of d.matchAll(/No module named '([\w.]+)'/g)) {
@@ -388,9 +484,48 @@ export function mapGateNotesToTargets(input: RepairTargetingInput): RepairTarget
 /** Signatures publiques top-level d'un module Python (le CONTRAT du fichier). */
 const PY_CONTRACT = /^(class\s+\w+|def\s+\w+|async\s+def\s+\w+|[A-Z][A-Z0-9_]{1,63}\s*=)/;
 
-export function extractPythonContracts(content: string, maxLines = 14, maxLineChars = 110): string[] {
+/** EVO-000032 (REG) — une ligne top-level ouvrant un littéral dict/list. */
+const REGISTRY_OPEN = /[{[]\s*$/;
+/** EVO-000032 (REG) — borne signée : ≤8 lignes de continuation par registre. */
+const REGISTRY_MAX_CONTINUATION = 8;
+
+export interface PythonContractOpts {
+  /** EVO-000032 — capturer le corps indenté des registres top-level */
+  registry?: boolean;
+  maxLines?: number;
+  maxLineChars?: number;
+}
+
+/**
+ * Consomme les lignes indentées de continuation d'un registre ouvert en
+ * `openIdx` JUSQU'À la fermeture ('}' / ']'), borné ≤8 lignes / maxLineChars
+ * (EVO-000032 REG — les clés de fabrique « "notch": NotchPayGateway »
+ * deviennent visibles). Retourne l'index de la dernière ligne consommée.
+ */
+function pushRegistryBody(lines: string[], openIdx: number, out: string[], maxLines: number, maxLineChars: number): number {
+  let consumed = openIdx;
+  for (let j = openIdx + 1; j < lines.length && out.length < maxLines; j++) {
+    const raw = lines[j] ?? '';
+    if (!raw.trim()) continue; // ligne vide : sautée, ne termine pas le registre
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('}') || trimmed.startsWith(']')) break; // fermeture : hors contrat
+    if (trimmed.startsWith('#')) continue;
+    out.push(trimmed.slice(0, maxLineChars));
+    consumed = j;
+    if (j - openIdx >= REGISTRY_MAX_CONTINUATION) break;
+  }
+  return consumed;
+}
+
+export function extractPythonContracts(content: string, opts: PythonContractOpts = {}): string[] {
+  const maxLines = opts.maxLines ?? 14;
+  const maxLineChars = opts.maxLineChars ?? 110;
+  const registry = opts.registry ?? false;
   const out: string[] = [];
-  for (const raw of (content ?? '').split('\n')) {
+  const lines = (content ?? '').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (out.length >= maxLines) break;
+    const raw = lines[i] ?? '';
     // top-level STRICT : les lignes indentées (corps de classe/fonction) ne
     // font pas partie du contrat public — les shapes complets restent
     // accessibles via les dependencySources (test + dependsOn)
@@ -399,7 +534,17 @@ export function extractPythonContracts(content: string, maxLines = 14, maxLineCh
     if (!line || line.startsWith('#')) continue;
     if (PY_CONTRACT.test(line)) {
       out.push(line.slice(0, maxLineChars));
-      if (out.length >= maxLines) break;
+      // EVO-000032 (REG) — « GATEWAYS = { » : la déclaration OUVRE un
+      // registre dont les clés indentées entrent au contrat (défaut sans
+      // opts.registry = extraction STRICTE signée EXACTE, rollback)
+      if (registry && REGISTRY_OPEN.test(line)) {
+        i = pushRegistryBody(lines, i, out, maxLines, maxLineChars);
+      }
+    } else if (registry && REGISTRY_OPEN.test(line)) {
+      // ouverture non-PY_CONTRACT (« ROUTES: { », « ITEMS = [ ») :
+      // l'ouverture elle-même entre au contrat puis son corps indenté
+      out.push(line.slice(0, maxLineChars));
+      i = pushRegistryBody(lines, i, out, maxLines, maxLineChars);
     }
   }
   return out;
@@ -414,6 +559,8 @@ export interface SiblingContract { path: string; lines: string[] }
  * EVO-000031 (DC1/DC2) — opts.depsFirst inverse l'ordre : les imports
  * internes RÉELS d'abord (contrats stables, lus À JOUR), co-cibles ensuite
  * ; bornes portées à 5 frères / 3600 car. par l'appelant quand PROMOTED.
+ * EVO-000032 (REG) — opts.registry capture le corps indenté des registres
+ * top-level (clés de fabrique GATEWAYS = { … }) dans les contrats frères.
  * Sans opts (défaut) → comportement signé EVO-000029 EXACT (rollback).
  */
 export async function buildSiblingContracts(
@@ -422,7 +569,7 @@ export async function buildSiblingContracts(
   coTargets: string[],
   treePaths: string[],
   readContent: (p: string) => Promise<string | null>,
-  opts: { maxSiblings?: number; maxChars?: number; depsFirst?: boolean } = {},
+  opts: { maxSiblings?: number; maxChars?: number; depsFirst?: boolean; registry?: boolean } = {},
 ): Promise<SiblingContract[]> {
   const maxSiblings = opts.maxSiblings ?? 3;
   const maxChars = opts.maxChars ?? 2400;
@@ -450,7 +597,7 @@ export async function buildSiblingContracts(
     if (out.length >= maxSiblings || budget <= 200) break;
     const content = await readContent(p);
     if (!content) continue; // absent/vide → pas de contrat inventé (INV-210)
-    const lines = extractPythonContracts(content);
+    const lines = extractPythonContracts(content, { registry: opts.registry });
     if (!lines.length) continue; // sans contrat utile → sauté, ne consomme PAS de slot utile
     const joined = lines.join('\n').slice(0, budget);
     budget -= joined.length;
@@ -502,6 +649,20 @@ export async function runRepairCycle(input: RepairCycleInput): Promise<RepairCyc
   }
 
   // 3. CIBLAGE — imports résolus depuis la DB (source de vérité, jamais mémoire)
+  // EVO-000031 (DC1/DC2) + EVO-000032 (REG/BF) — armements lus AVANT le
+  // ciblage (les interrupteurs gouvernent les deux étapes) : fermeture des
+  // dépendances (imports réels d'abord, bornes 5/3600), contrats de registre,
+  // ciblage frames STRICT — indépendants (interrupteurs séparés).
+  const closureActive = await isDependencyClosureActive();
+  const registryActive = await isRegistryContractsActive();
+  const bootFidelity = await isBootFidelityActive();
+  const siblingOpts: { depsFirst?: boolean; maxSiblings?: number; maxChars?: number; registry?: boolean } = {};
+  if (closureActive) {
+    siblingOpts.depsFirst = true;
+    siblingOpts.maxSiblings = 5;
+    siblingOpts.maxChars = 3600;
+  }
+  if (registryActive) siblingOpts.registry = true;
   const treePathList = input.treePaths.map((t) => t.path);
   const importsByFile: Record<string, string[]> = {};
   if (input.stack === 'PYTHON') {
@@ -517,6 +678,7 @@ export async function runRepairCycle(input: RepairCycleInput): Promise<RepairCyc
   const targets = mapGateNotesToTargets({
     gateKind: input.gateKind, failStages: input.failStages,
     treePaths: treePathList, importsByFile,
+    bootFidelity, workspaceDir: input.workspaceDir,
   });
   if (targets.length === 0) {
     await captureAndPersist({
@@ -541,10 +703,7 @@ export async function runRepairCycle(input: RepairCycleInput): Promise<RepairCyc
   };
 
   // 4. RÉPARATION — 1 tentative par fichier, verdict EXACT + contenu actuel
-  // EVO-000031 (DC1/DC2) — fermeture des dépendances si PROMOTED : imports
-  // réels de la cible d'abord, bornes 5 frères / 3600 car. ; sinon
-  // comportement signé EVO-000029 (co-cibles d'abord, 3 / 2400).
-  const closureActive = await isDependencyClosureActive();
+  // (armements EVO-000031/032 déjà lus en tête du ciblage — siblingOpts)
   for (const target of targets) {
     if (result.addedAttempts > 0) await new Promise((r) => setTimeout(r, PACING_MS));
     const row = await db.generatedFile.findFirst({ where: { runId: input.runId, path: target.path } });
@@ -570,7 +729,7 @@ export async function runRepairCycle(input: RepairCycleInput): Promise<RepairCyc
       target.path, current,
       targets.map((t) => t.path), treePathList,
       async (p) => (await db.generatedFile.findFirst({ where: { runId: input.runId, path: p } }))?.content ?? null,
-      closureActive ? { depsFirst: true, maxSiblings: 5, maxChars: 3600 } : {},
+      siblingOpts,
     );
     const siblingPoint = siblings.length
       ? `SIBLING CONTRACTS (EVO-000029 cross-file repair context) — these sibling files ALREADY define these exact symbols; import and use them EXACTLY as declared, NEVER re-declare, re-name, or invent different shapes:\n${siblings.map((s) => `--- ${s.path} ---\n${s.lines.join('\n')}`).join('\n')}`

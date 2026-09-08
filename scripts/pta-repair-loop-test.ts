@@ -1,13 +1,15 @@
 #!/usr/bin/env bun
 // ═══════════════════════════════════════════════════════════════════
 // YAHRIA — TESTS BOUCLE DE RÉPARATION CIBLÉE (EVO-000028 + EVO-000029
-// + EVO-000030 + EVO-000031) — PTA-002 it.11 · Tests unitaires de
+// + EVO-000030 + EVO-000031 + EVO-000032) — PTA-002 it.12 · Tests unitaires de
 // run-repair-loop.ts : armement réel, ciblage PUR (détails de portes RÉELS
 // it.7 + détails FIDÈLES EVO-000029), contrats inter-fichiers (RC3),
 // résolution d'imports, classification INV-210, budget PAR PORTE + contrat
 // pydantic v2 + contrat comportemental (EVO-000030), FERMETURE DES
 // DÉPENDANCES (EVO-000031 : imports réels d'abord, bornes 5/3600, fixtures
-// réelles RUN-000035/41), drills d'armement sous registre temporairement
+// réelles RUN-000035/41), CONTRATS DE REGISTRE + FIDÉLITÉ BOOT (EVO-000032 :
+// clés dict top-level, ciblage frames STRICT, stderr tête+queue — fixtures
+// réelles RUN-000042/44), drills d'armement sous registre temporairement
 // PROMOTED / ROLLED_BACK (promotion-safe).
 //   bun run scripts/pta-repair-loop-test.ts
 // PROMOTION-SAFE : l'état réel du registre est PRÉSERVÉ à l'identique
@@ -15,12 +17,16 @@
 // décision humaine n'est jamais écrasée, INV-227).
 // ═══════════════════════════════════════════════════════════════════
 
+import { readFileSync } from 'node:fs';
 import { PrismaClient } from '@prisma/client';
 import {
   isRunRepairActive,
   resetRunRepairCache,
   isDependencyClosureActive,
   resetDependencyClosureCache,
+  isRegistryContractsActive,
+  resetRegistryContractsCache,
+  REGISTRY_CONTRACTS_EVO_UID,
   runRepairCycle,
   mapGateNotesToTargets,
   resolvePythonImports,
@@ -30,6 +36,13 @@ import {
   DEPENDENCY_CLOSURE_EVO_UID,
   REPAIR_MAX_FILES,
 } from '../src/lib/yahria/run-repair-loop';
+import {
+  isBootFidelityActive,
+  resetBootFidelityCache,
+  formatBootStderr,
+  BOOT_STDERR_HEAD_CHARS,
+  BOOT_STDERR_TAIL_CHARS,
+} from '../src/lib/yahria/boot-gate';
 import { pytestFailureDetail } from '../src/lib/yahria/behavioral-gate';
 import { classifyFailure } from '../src/lib/yahria/completeness-gate';
 import { captureAndPersist } from '../src/lib/yahria/evidence-store';
@@ -53,8 +66,17 @@ const TREE = [
 // racine réels que l'approximation T3/T7 ne porte pas (security.py,
 // webhooks.py racine, gateways/__init__.py) — requis pour les fixtures T11
 const TREE31 = [...TREE, 'security.py', 'webhooks.py', 'gateways/__init__.py'];
+// arbre RÉEL it.11/it.12 dans l'ORDRE du CANONICAL_TREE de mesure — requis
+// pour reproduire le poison it.11 EXACT (gateways/__init__.py précède
+// tests/__init__.py : la frame stdlib importlib/__init__.py:90 y était
+// résolue via son basename — preuve EV-ARTIFACT RUN-000044)
+const TREE32 = [
+  'main.py', 'config.py', 'models.py', 'schemas.py', 'security.py',
+  'gateways/__init__.py', 'gateways/base.py', 'gateways/notchpay.py', 'gateways/pesapal.py',
+  'webhooks.py', 'tests/__init__.py', 'tests/test_api.py', 'requirements.txt',
+];
 
-console.log('\nPTA-002 · Boucle de réparation ciblée (EVO-000028 + EVO-000029 + EVO-000030 + EVO-000031) — tests unitaires\n');
+console.log('\nPTA-002 · Boucle de réparation ciblée (EVO-000028 + EVO-000029 + EVO-000030 + EVO-000031 + EVO-000032) — tests unitaires\n');
 
 // ── RR-T1. ARMEMENT GOUVERNÉ — le registre EST l'interrupteur ──────
 const stateBefore = await db.evolutionProposal.findUnique({ where: { proposalUid: RUN_REPAIR_EVO_UID } });
@@ -543,10 +565,156 @@ check('T11.8 drill ROLLED_BACK : fermeture DÉSARMÉE sans redéploiement (ordre
 check('T11.9 drill re-PROMOTED : fermeture RÉ-ARMÉE sans redéploiement', drill31BackOn);
 check(`T11.10 état EXACT restauré après le drill (${state31Before?.state} — décision humaine intacte, INV-227)`, restored31);
 
+// ── RR-T12. EVO-000032 — CONTRATS DE REGISTRE + FIDÉLITÉ BOOT ──────
+// (protocole signé : REG — corps indenté des dict/list top-level visibles,
+//  ≤8 lignes / 110 car. ; BF-1 — frames boot en match STRICT contre l'arbre ;
+//  BF-2 — stderr tête 800 + queue 1200. Fixtures RÉELLES : fabrique
+//  RUN-000042 (clé « notch » vs « notchpay ») et traceback boot RUN-000044
+//  REPRODUIT VIVANT depuis le workspace (scripts/fixtures/).
+//  ROLLED_BACK → extraction STRICTE + tail seul + ciblage basename EVO-000029)
+const state32Before = await db.evolutionProposal.findUnique({ where: { proposalUid: REGISTRY_CONTRACTS_EVO_UID } });
+const promoted32Real = state32Before?.state === 'PROMOTED';
+check(`T12.1 isRegistryContractsActive() reflète le registre RÉEL (EVO-000032 ${state32Before?.state} en DB)`,
+  (await isRegistryContractsActive()) === promoted32Real);
+check(`T12.1b isBootFidelityActive() reflète le MÊME registre (EVO-000032 ${state32Before?.state} en DB)`,
+  (await isBootFidelityActive()) === promoted32Real);
+
+// (a) REG — fabrique multi-ligne RÉELLE (cause RUN-000042 : le contrat de
+// test envoie « notchpay » alors que la fabrique n'expose que « notch » —
+// les clés indentées étaient INVISIBLES à l'extraction STRICTE)
+const gatewaysInitRegistry = [
+  'from .base import BaseGateway',
+  'GATEWAYS = {',
+  '    "notch": NotchPayGateway,',
+  '    "notchpay": NotchPayGateway,',
+  '    "pesapal": PesaPalGateway,',
+  '}',
+  'def get_gateway(gateway_name: str, config: dict) -> BaseGateway:',
+  '    return GATEWAYS[gateway_name](config)',
+].join('\n');
+const t121 = extractPythonContracts(gatewaysInitRegistry, { registry: true });
+check('T12.2 (a) GATEWAYS = { multi-ligne → clés de fabrique extraites (« notchpay » visible)',
+  t121.includes('"notchpay": NotchPayGateway,') && t121.includes('"notch": NotchPayGateway,') && t121.includes('"pesapal": PesaPalGateway,'), t121.join(' · '));
+const t121old = extractPythonContracts(gatewaysInitRegistry);
+check('T12.3 (b) défaut SANS EVO-000032 → extraction STRICTE inchangée (clés ABSENTES — rollback)',
+  !t121old.some((l) => l.includes('notchpay"')) && t121old.some((l) => l.startsWith('GATEWAYS = {')), t121old.join(' · '));
+
+// bornes signées : ≤8 lignes de continuation, 110 car./ligne
+const twelveKeys = Array.from({ length: 12 }, (_, i) => `    "k${i}": G${i},`).join('\n');
+const bigRegistry = `GATEWAYS = {\n${twelveKeys}\n}`;
+const t122 = extractPythonContracts(bigRegistry, { registry: true });
+check('T12.4 (REG) 12 clés de continuation → EXACTEMENT 8 capturées (borne signée)',
+  t122.length === 9 && t122.some((l) => l.includes('"k7"')) && !t122.some((l) => l.includes('"k8"')), `${t122.length} lignes`);
+const longVal = `    "long": NotchPayGateway(config=${'x'.repeat(150)}),`;
+const t123 = extractPythonContracts(`GATEWAYS = {\n${longVal}\n}`, { registry: true });
+check('T12.5 (REG) ligne de registre > 110 car. → tronquée à 110',
+  t123.some((l) => l.startsWith('"long":') && l.length === 110), `${t123.find((l) => l.startsWith('"long":'))?.length} car.`);
+const t124 = extractPythonContracts('ROUTES: {\n    "payments": handle_payments,\n}\nITEMS = [\n    "alpha",\n    "beta",\n]', { registry: true });
+check('T12.6 (REG) ouvertures « : { » et « = [ » capturées avec leur corps',
+  t124.includes('"payments": handle_payments,') && t124.includes('"alpha",'), t124.join(' · '));
+
+// REG end-to-end — réparer main.py voit les clés de fabrique (fixture RUN-000042)
+const mainPy042 = 'import gateways\nfrom fastapi import FastAPI\napp = FastAPI()\ndef initiate(payload):\n    gw = gateways.get_gateway("notchpay", {})\n    return gw.initiate_payment()\n';
+const db042 = new Map<string, string>([['gateways/__init__.py', gatewaysInitRegistry]]);
+const t125 = await buildSiblingContracts(
+  'main.py', mainPy042, ['main.py'], TREE31,
+  async (p) => db042.get(p) ?? null,
+  { depsFirst: true, maxSiblings: 5, maxChars: 3600, registry: true },
+);
+check('T12.7 (RUN-000042 réel) réparer main.py : le contrat de gateways/__init__.py contient la CLÉ « notchpay » (l’écart fabrique/test devient visible)',
+  t125.find((s) => s.path === 'gateways/__init__.py')?.lines.some((l) => l.includes('"notchpay": NotchPayGateway')) === true, t125.map((s) => s.path).join(','));
+
+// (c) BF-1 — traceback boot RÉEL RUN-000044 (reproduit vivant depuis le
+// workspace : frames site-packages/uvicorn + importlib stdlib + frames
+// workspace main.py:7 → gateways/__init__.py:3 → pesapal.py:10 →
+// ImportError: attempted relative import beyond top-level package)
+const realBootStderr = readFileSync('scripts/fixtures/boot-stderr-run000044.txt', 'utf8');
+const wsDir44 = '/home/z/my-project/db/workspaces/RUN-000044';
+const t126 = mapGateNotesToTargets({
+  gateKind: 'BOOT',
+  failStages: [{ stage: 'BOOT', detail: `uvicorn main:app sans réponse HTTP en 30s — ${realBootStderr}` }],
+  treePaths: TREE32,
+  bootFidelity: true,
+  workspaceDir: wsDir44,
+});
+check('T12.8 (c) traceback RÉEL RUN-000044 + BF-1 → pesapal.py:10 CIBLÉ (frame workspace, finie l’angle mort)',
+  t126.some((t) => t.path === 'gateways/pesapal.py'), t126.map((t) => t.path).join(','));
+check('T12.9 (c) BF-1 → AUCUN poison stdlib : la cible gateways/__init__.py vient de la frame WORKSPACE :3, jamais de importlib/__init__.py:90',
+  t126.find((t) => t.path === 'gateways/__init__.py')?.reason.includes('gateways/__init__.py:3') === true
+  && t126.every((t) => !t.reason.includes(':90')), t126.map((t) => `${t.path} — ${t.reason.slice(0, 60)}`).join(' | '));
+check('T12.10 (c) BF-1 → site-packages/uvicorn/main.py ne matche JAMAIS main.py (cible racine UNIQUEMENT via bootEntryCandidates)',
+  t126[0]?.path === 'main.py' && t126.filter((t) => t.path === 'main.py').length === 1, t126.map((t) => t.path).join(','));
+
+// ROLLBACK — défaut signé EVO-000029 REPRODUIT : importlib/__init__.py:90
+// (stdlib) résolu À TORT vers gateways/__init__.py via le basename (le défaut
+// it.11 EV-ARTIFACT : un slot gaspillé pendant que la vraie frame mourait hors note)
+const t126old = mapGateNotesToTargets({
+  gateKind: 'BOOT',
+  failStages: [{ stage: 'BOOT', detail: `uvicorn main:app sans réponse HTTP en 30s — ${realBootStderr}` }],
+  treePaths: TREE32,
+});
+check('T12.11 défaut sans EVO-000032 → le poison it.11 est REPRODUIT (gateways/__init__.py cité depuis __init__.py:90 stdlib)',
+  t126old.find((t) => t.path === 'gateways/__init__.py')?.reason.includes('__init__.py:90') === true,
+  t126old.map((t) => `${t.path} — ${t.reason.slice(0, 60)}`).join(' | '));
+
+// (d) BF-2 — stderr tête+queue sur le traceback RÉEL 3754 car.
+const t127 = formatBootStderr(realBootStderr);
+check('T12.12 (d) stderr RÉEL RUN-000044 → la note contient l’ouverture (Traceback) ET l’ImportError finale ET les frames workspace pesapal.py:10',
+  t127.includes('Traceback (most recent call last):')
+  && t127.includes('ImportError: attempted relative import beyond top-level package')
+  && t127.includes('gateways/pesapal.py", line 10'));
+check('T12.13 (d) note bornée : ≤ tête 800 + queue 1200 + marqueur',
+  t127.length <= BOOT_STDERR_HEAD_CHARS + BOOT_STDERR_TAIL_CHARS + 120, `${t127.length} car.`);
+
+// BF-2 — stderr LONG (chaîne d’import première passe plus longue, cas réel
+// it.11 où le tail seul perdait le début) : les frames d’ouverture survivent
+// en TÊTE, l’ImportError finale en QUEUE
+const wsIdx = realBootStderr.indexOf(`File "${wsDir44}/main.py"`);
+// stderr long = réel + un bloc intermédiaire REALISTE (frames site-packages
+// supplémentaires d'une chaîne d'import première passe plus longue — le cas
+// it.11 où la fenêtre tail seule perdait le début du traceback)
+const longBootStderr = realBootStderr.slice(0, wsIdx) + realBootStderr.slice(1200, 2400) + realBootStderr.slice(wsIdx);
+const t128 = formatBootStderr(longBootStderr);
+check('T12.14 (d) stderr LONG → tête (Traceback…) + marqueur d’omission + queue (ImportError finale) présents',
+  t128.includes('Traceback (most recent call last):')
+  && t128.includes('ImportError: attempted relative import beyond top-level package')
+  && t128.includes('caractères de traceback intermédiaires omis'), `${t128.length} car. / stderr ${longBootStderr.length} car.`);
+const t129 = formatBootStderr(realBootStderr.slice(0, 1500));
+check('T12.15 stderr < somme des fenêtres → intégral (identité)', t129 === realBootStderr.slice(0, 1500).trim());
+
+// drills promotion-safe EVO-000032 : ROLLED_BACK → extraction STRICTE + tail
+// seul restaurés SANS redéploiement ; re-PROMOTED → ré-armés
+let drill32OffReg = false, drill32OnReg = false, drill32OffBf = false, drill32OnBf = false, restored32 = false;
+try {
+  await db.evolutionProposal.update({ where: { proposalUid: REGISTRY_CONTRACTS_EVO_UID }, data: { state: 'ROLLED_BACK' } });
+  resetRegistryContractsCache();
+  resetBootFidelityCache();
+  drill32OffReg = (await isRegistryContractsActive()) === false;
+  drill32OffBf = (await isBootFidelityActive()) === false;
+  await db.evolutionProposal.update({ where: { proposalUid: REGISTRY_CONTRACTS_EVO_UID }, data: { state: 'PROMOTED' } });
+  resetRegistryContractsCache();
+  resetBootFidelityCache();
+  drill32OnReg = (await isRegistryContractsActive()) === true;
+  drill32OnBf = (await isBootFidelityActive()) === true;
+} finally {
+  // PROMOTION-SAFE : l'état PRÉ-DRILL est restauré à l'identique (INV-227)
+  await db.evolutionProposal.update({
+    where: { proposalUid: REGISTRY_CONTRACTS_EVO_UID },
+    data: { state: state32Before?.state ?? 'UNDER_REVIEW' },
+  });
+  resetRegistryContractsCache();
+  resetBootFidelityCache();
+  const back32 = await db.evolutionProposal.findUnique({ where: { proposalUid: REGISTRY_CONTRACTS_EVO_UID } });
+  restored32 = back32?.state === state32Before?.state;
+}
+check('T12.16 drill ROLLED_BACK : registres + fidélité DÉSARMÉS sans redéploiement (STRICT + tail seul EVO-000029)', drill32OffReg && drill32OffBf);
+check('T12.17 drill re-PROMOTED : registres + fidélité RÉ-ARMÉS sans redéploiement', drill32OnReg && drill32OnBf);
+check(`T12.18 état EXACT restauré après le drill (${state32Before?.state} — décision humaine intacte, INV-227)`, restored32);
+
 await captureAndPersist({
   category: 'POLICY', criticality: 'STANDARD', actorType: 'SYSTEM', actorId: 'pta-repair-loop-test',
-  claim: `Drill armement EVO-000028+000029+000030+000031 : boucle armée, budget par porte + pydantic v2 + fermeture des dépendances vérifiés, états ${stateBefore?.state}/${state30Before?.state}/${state31Before?.state} restaurés à l'identique (${passed} PASS / ${failed} FAIL) — décisions humaines intactes (INV-227)`,
-  payload: { proposalUid: RUN_REPAIR_EVO_UID, proposal30Uid: 'EVO-000030', proposal31Uid: 'EVO-000031', statePreserved: stateBefore?.state, state30Preserved: state30Before?.state, state31Preserved: state31Before?.state, passed, failed, drillArmed, drillInfra, drillNoTarget, restoredOk, drill30Off, drill30BackOn, restored30, drill31Off, drill31BackOn, restored31 },
+  claim: `Drill armement EVO-000028+000029+000030+000031+000032 : boucle armée, budget par porte + pydantic v2 + fermeture des dépendances + contrats de registre + fidélité boot vérifiés, états ${stateBefore?.state}/${state30Before?.state}/${state31Before?.state}/${state32Before?.state} restaurés à l'identique (${passed} PASS / ${failed} FAIL) — décisions humaines intactes (INV-227)`,
+  payload: { proposalUid: RUN_REPAIR_EVO_UID, proposal30Uid: 'EVO-000030', proposal31Uid: 'EVO-000031', proposal32Uid: 'EVO-000032', statePreserved: stateBefore?.state, state30Preserved: state30Before?.state, state31Preserved: state31Before?.state, state32Preserved: state32Before?.state, passed, failed, drillArmed, drillInfra, drillNoTarget, restoredOk, drill30Off, drill30BackOn, restored30, drill31Off, drill31BackOn, restored31, drill32OffReg, drill32OnReg, drill32OffBf, drill32OnBf, restored32 },
 });
 
 console.log(`\n═ Résultat : ${passed} PASS / ${failed} FAIL ═\n`);

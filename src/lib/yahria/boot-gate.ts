@@ -22,6 +22,38 @@ export const BOOT_GATE_EVO_UID = 'EVO-000016';
 const BOOT_WAIT_MS = 30_000;
 const PROBE_INTERVAL_MS = 1_000;
 
+// ── BG-1 bis. ARMEMENT EVO-000032 — fidélité BOOT (interrupteur registre) ──
+
+export const BOOT_FIDELITY_EVO_UID = 'EVO-000032';
+
+let bootFidelityCache: { value: boolean; at: number } | null = null;
+const FIDELITY_TTL_MS = 5_000;
+
+/**
+ * EVO-000032 (moitié BF) — la fidélité BOOT (stderr tête+queue BF-2) n'est
+ * active QUE si la proposition est PROMOTED (registre = interrupteur,
+ * INV-227) ; registre indisponible → tail seul signé EVO-000029 (jamais
+ * actif par accident). Le ciblage strict des frames (BF-1) vit dans
+ * run-repair-loop.ts et lit la MÊME proposition.
+ */
+export async function isBootFidelityActive(): Promise<boolean> {
+  if (bootFidelityCache && Date.now() - bootFidelityCache.at < FIDELITY_TTL_MS) return bootFidelityCache.value;
+  let value = false;
+  try {
+    const p = await db.evolutionProposal.findUnique({ where: { proposalUid: BOOT_FIDELITY_EVO_UID } });
+    value = p?.state === 'PROMOTED';
+  } catch {
+    value = false;
+  }
+  bootFidelityCache = { value, at: Date.now() };
+  return value;
+}
+
+/** Invalidation forcée du cache d'armement EVO-000032/BF (tests, rollback drill). */
+export function resetBootFidelityCache(): void {
+  bootFidelityCache = null;
+}
+
 // ── BG-1. ARMEMENT — lu dans le registre d'évolution, jamais ailleurs ──
 
 export async function isBootGateActive(): Promise<boolean> {
@@ -102,6 +134,28 @@ function terminate(child: ReturnType<typeof spawn>): void {
   setTimeout(() => { if (child.exitCode === null) child.kill('SIGKILL'); }, 3_000).unref();
 }
 
+// ── BG-3 bis. FIDÉLITÉ BOOT (EVO-000032 BF-2) — stderr TÊTE + QUEUE ──
+
+export const BOOT_STDERR_HEAD_CHARS = 800;
+export const BOOT_STDERR_TAIL_CHARS = 1200;
+
+/**
+ * EVO-000032 (BF-2) — le stderr est conservé en TÊTE (premiers 800 car. —
+ * frames d'ouverture du traceback, dont les frames workspace quand la chaîne
+ * d'import est longue) + QUEUE (1200 car. — ImportError finale) au lieu du
+ * tail seul : la note it.11 (RUN-000044) ne contenait QUE les frames
+ * stdlib/site-packages de la fin et perdait les frames workspace du début —
+ * la réparation régénérait à l'aveugle. Sous la somme des deux fenêtres,
+ * le stderr intégral est conservé (comportement identique).
+ */
+export function formatBootStderr(all: string): string {
+  const s = (all ?? '').trim();
+  if (!s) return '';
+  if (s.length <= BOOT_STDERR_HEAD_CHARS + BOOT_STDERR_TAIL_CHARS) return s;
+  const omitted = s.length - BOOT_STDERR_HEAD_CHARS - BOOT_STDERR_TAIL_CHARS;
+  return `${s.slice(0, BOOT_STDERR_HEAD_CHARS).trimEnd()}\n[… ${omitted} caractères de traceback intermédiaires omis …]\n${s.slice(-BOOT_STDERR_TAIL_CHARS).trimStart()}`;
+}
+
 /** Toute réponse HTTP compte (même 404/500) — la connexion elle-même est la preuve de boot. */
 async function probe(url: string, timeoutMs = 3_000): Promise<number | null> {
   try {
@@ -120,6 +174,9 @@ export async function runBootGate(runUid: string, workspaceDir: string, stack: s
   const stages: BootGateStage[] = [];
   let passed = false;
   let openapiNote = '';
+  // EVO-000032 (BF-2) — armement lu UNE FOIS par porte (TTL 5s) : stderr
+  // tête+queue si PROMOTED, tail seul (comportement signé EVO-000029) sinon.
+  const bootFidelity = await isBootFidelityActive();
 
   try {
     if (stack !== 'PYTHON') {
@@ -213,17 +270,19 @@ export async function runBootGate(runUid: string, workspaceDir: string, stack: s
         await new Promise((r) => setTimeout(r, PROBE_INTERVAL_MS));
       }
       const bootMs = Date.now() - t3;
-      let stderrTail = '';
+      let stderrNote = '';
       if (!up) {
         // 1,5 s de grâce pour drainer les derniers octets, puis terminaison —
-        // stderrTail = TOUT le stderr accumulé depuis le spawn (traceback inclus)
+        // EVO-000032 (BF-2) : tête (800) + queue (1200) si PROMOTED — les
+        // frames workspace du DÉBUT du traceback survivent ; sinon tail 1200
+        // seul (comportement signé EVO-000029, rollback sans redéploiement).
         await new Promise((r) => setTimeout(r, 1_500));
-        stderrTail = stderrAll;
+        stderrNote = bootFidelity ? formatBootStderr(stderrAll) : stderrAll.slice(-1200);
         terminate(child);
       }
       stages.push({
         stage: 'BOOT', state: up ? 'PASS' : 'FAIL',
-        detail: up ? `uvicorn ${found.module}:${found.instance} répond sur :${port} (boot ${bootMs} ms)` : `uvicorn ${found.module}:${found.instance} sans réponse HTTP en ${BOOT_WAIT_MS / 1000}s — ${stderrTail.slice(-1200).trim() || 'connexion refusée'}`,
+        detail: up ? `uvicorn ${found.module}:${found.instance} répond sur :${port} (boot ${bootMs} ms)` : `uvicorn ${found.module}:${found.instance} sans réponse HTTP en ${BOOT_WAIT_MS / 1000}s — ${stderrNote.trim() || 'connexion refusée'}`,
         ms: bootMs,
       });
       if (!up) throw new GateStop();
@@ -259,7 +318,7 @@ export async function runBootGate(runUid: string, workspaceDir: string, stack: s
   await captureAndPersist({
     category: passed ? 'ARTIFACT' : 'INCIDENT', criticality: 'HIGH', actorType: 'SYSTEM', actorId: 'yahria-boot-gate',
     claim: `Porte de boot (EVO-000016) ${passed ? 'PASS' : 'FAIL'} : ${runUid} — ${stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`,
-    payload: { runUid, stack, passed, totalMs: report.totalMs, openapi: openapiNote, stages: stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 600) })) },
+    payload: { runUid, stack, passed, totalMs: report.totalMs, openapi: openapiNote, bootFidelity, stages: stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 600) })) },
     traceId,
   });
   return report;
