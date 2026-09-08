@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { stateColor } from '@/components/yahria/panels-core';
+import { InlinePromptForm } from '@/components/yahria/inline-prompt-form';
 import {
   KeyRound, ShieldCheck, FlaskConical, Rocket, Activity, Map, Loader2,
   RefreshCw, CheckCircle2, XCircle, MinusCircle, Terminal, Copy,
@@ -34,6 +35,8 @@ export function ApiPanel() {
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Révocation gouvernée inline — window.prompt muet en iframe (défaut EVO-000026/000028)
+  const [revokeFor, setRevokeFor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch('/api/yahria/apikeys');
@@ -57,11 +60,15 @@ export function ApiPanel() {
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
   };
 
-  const revoke = async (id: string) => {
-    const reason = window.prompt('Raison de révocation (≥ 10 caractères — INV-201) :');
-    if (!reason || reason.trim().length < 10) return;
-    await fetch('/api/yahria/apikeys', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, reason }) });
-    await load();
+  // Révocation : saisie inline via InlinePromptForm (la raison arrive validée ≥ 10)
+  const revoke = async (id: string, reason: string) => {
+    setBusy('revoke'); setErr(null);
+    try {
+      const res = await fetch('/api/yahria/apikeys', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, reason }) });
+      const json = await res.json();
+      if (!json.ok) throw new Error((json.errors ?? []).join(' · ') || json.error || 'échec');
+      await load();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); } finally { setBusy(null); }
   };
 
   return (
@@ -121,7 +128,17 @@ export function ApiPanel() {
                   {k.revoked ? <Badge variant="outline" className="text-[9px] px-1 py-0 border-red-500/40 text-red-300">RÉVOQUÉE</Badge>
                     : <Badge variant="outline" className="text-[9px] px-1 py-0 border-teal-500/40 text-teal-300">ACTIVE</Badge>}
                   <div className="flex-1" />
-                  {!k.revoked && <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] border-red-500/40 text-red-300" onClick={() => revoke(k.id)}>Révoquer</Button>}
+                  {!k.revoked && <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] border-red-500/40 text-red-300" onClick={() => setRevokeFor(revokeFor === k.id ? null : k.id)}>Révoquer</Button>}
+                  {revokeFor === k.id && (
+                    <InlinePromptForm
+                      title={`RÉVOCATION — ${k.name} (INV-201)`}
+                      fields={[{ key: 'reason', placeholder: 'Raison de révocation', minLength: 10 }]}
+                      confirmLabel="Confirmer la révocation"
+                      busy={busy === 'revoke'}
+                      onConfirm={(v) => { revoke(k.id, v.reason.trim()); setRevokeFor(null); }}
+                      onCancel={() => setRevokeFor(null)}
+                    />
+                  )}
                 </div>
               ))}
             </div>

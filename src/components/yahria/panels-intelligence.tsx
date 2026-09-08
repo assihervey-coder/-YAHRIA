@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { stateColor } from '@/components/yahria/panels-core';
+import { InlinePromptForm } from '@/components/yahria/inline-prompt-form';
 import { Brain, Database, Sparkles, Loader2, RefreshCw, Trash2, Layers, GitFork, ChevronRight } from 'lucide-react';
 
 // ── D.13 — MEMORY SYSTEM ──────────────────────────────────────────
@@ -27,6 +28,8 @@ export function MemoryPanel() {
   const [q, setQ] = useState('');
   const [form, setForm] = useState({ kind: 'SEMANTIC', key: '', content: '', source: '', validation: 'PROBABLE' });
   const [busy, setBusy] = useState<string | null>(null);
+  // Oubli gouverné inline — window.prompt muet en iframe (défaut EVO-000026/000028)
+  const [forgetFor, setForgetFor] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const load = useCallback(async (query = '') => {
@@ -117,16 +120,25 @@ export function MemoryPanel() {
                     )}
                     {r.kind !== 'ARCHITECTURAL' && (
                       <Button size="sm" variant="outline" className="h-6 px-2 text-[10px] border-red-500/40 text-red-300"
-                        onClick={() => {
-                          const reason = window.prompt('Raison de l\'oubli (≥ 10 caractères — INV-222) :');
-                          if (reason && reason.trim().length >= 10) call('DELETE', { id: r.id, reason }, 'Oubli gouverné');
-                        }} disabled={!!busy}>
+                        onClick={() => setForgetFor(forgetFor === r.id ? null : r.id)} disabled={!!busy}>
                         <Trash2 className="h-3 w-3 mr-1" /> Oublier
                       </Button>
                     )}
                   </div>
                   <p className="text-xs text-slate-300 mt-1 leading-relaxed line-clamp-2">{r.content}</p>
                   <p className="text-[10px] text-slate-600 mt-0.5 font-mono">source : {r.source}</p>
+                  {forgetFor === r.id && (
+                    <div className="mt-2">
+                      <InlinePromptForm
+                        title={`OUBLI GOUVERNÉ — ${r.key} (INV-222)`}
+                        fields={[{ key: 'reason', placeholder: 'Raison de l’oubli', minLength: 10 }]}
+                        confirmLabel="Confirmer l’oubli"
+                        busy={busy === 'Oubli gouverné'}
+                        onConfirm={(v) => { call('DELETE', { id: r.id, reason: v.reason.trim() }, 'Oubli gouverné'); setForgetFor(null); }}
+                        onCancel={() => setForgetFor(null)}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -247,6 +259,9 @@ export function EvolutionPanel() {
   const [decision, setDecision] = useState<{ p: Proposal; action: 'approve' | 'reject' } | null>(null);
   const [reasonText, setReasonText] = useState('');
   const [rollbackText, setRollbackText] = useState('');
+  // Promotion inline (INV-163/162) — window.prompt muet en iframe : le bouton
+  // « Promouvoir » semblait mort dans l'iframe de preview (défaut EVO-000028).
+  const [promoteFor, setPromoteFor] = useState<Proposal | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch('/api/yahria/evolution');
@@ -378,6 +393,28 @@ export function EvolutionPanel() {
                       </div>
                     </div>
                   )}
+                  {promoteFor && promoteFor.proposalUid === p.proposalUid && (
+                    <div className="w-full">
+                      <InlinePromptForm
+                        title={`PROMOUVOIR — ${p.proposalUid} · risque ${p.riskClass}`}
+                        fields={[
+                          ...(!p.hasRollbackPlan ? [{ key: 'rollback', placeholder: 'Plan de rollback (INV-163)', minLength: 15 }] : []),
+                          ...(!p.hasExperiment ? [{ key: 'experiment', placeholder: 'Résultat d’expérimentation documenté (INV-162)', minLength: 20 }] : []),
+                        ]}
+                        confirmLabel="Confirmer la promotion"
+                        busy={busy === 'promote'}
+                        onConfirm={(v) => {
+                          act({
+                            action: 'promote', proposalUid: p.proposalUid, actor: { type: 'HUMAN', id: 'release' },
+                            rollbackPlan: v.rollback?.trim(),
+                            experiment: v.experiment !== undefined ? { note: v.experiment.trim() } : undefined,
+                          }, 'promote');
+                          setPromoteFor(null);
+                        }}
+                        onCancel={() => setPromoteFor(null)}
+                      />
+                    </div>
+                  )}
                   {na && (
                     <Button size="sm" className="h-7 text-[11px] bg-teal-600 hover:bg-teal-500 text-white"
                       onClick={() => {
@@ -386,20 +423,11 @@ export function EvolutionPanel() {
                           // Décision HUMAN inline (INV-227) — sans window.prompt, non fiable en iframe
                           openDecision(p, na.action as 'approve' | 'reject');
                         } else if (na.action === 'promote') {
-                          // INV-163 : rollback requis pour PROMOTED s'il n'a pas été scellé à l'approbation
-                          let rollbackPlan: string | undefined;
-                          if (!p.hasRollbackPlan) {
-                            rollbackPlan = window.prompt('INV-163 — plan de rollback obligatoire pour PROMOTED (≥ 15 caractères) :') || '';
-                            if (rollbackPlan.trim().length < 15) return;
-                          }
-                          // INV-162 : résultat d'expérimentation requis s'il n'existe pas
-                          let experiment: Record<string, unknown> | undefined;
-                          if (!p.hasExperiment) {
-                            const exp = window.prompt(`INV-162 — résultat d'expérimentation documenté (≥ 20 caractères) :`) || '';
-                            if (exp.trim().length < 20) return;
-                            experiment = { note: exp.trim() };
-                          }
-                          act({ action: 'promote', proposalUid: p.proposalUid, actor: { type: 'HUMAN', id: 'release' }, rollbackPlan, experiment }, 'promote');
+                          // INV-163/162 : saisie INLINE si les documents gouvernés manquent —
+                          // window.prompt est muet en iframe (null silencieux → bouton mort).
+                          // Promouvoir directement quand tout est déjà scellé.
+                          if (!p.hasRollbackPlan || !p.hasExperiment) setPromoteFor(p);
+                          else act({ action: 'promote', proposalUid: p.proposalUid, actor: { type: 'HUMAN', id: 'release' } }, 'promote');
                         } else {
                           act({ action: na.action, proposalUid: p.proposalUid, actor: { type: 'HUMAN', id: 'pipeline' } }, na.action);
                         }

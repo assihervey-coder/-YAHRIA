@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { stateColor } from '@/components/yahria/panels-core';
+import { InlinePromptForm } from '@/components/yahria/inline-prompt-form';
 import { Network, Play, Plus, RefreshCw, Ban, Loader2, ArrowRight } from 'lucide-react';
 
 interface MissionRow {
@@ -31,6 +32,8 @@ export function MissionGraphPanel() {
   const [goal, setGoal] = useState('');
   const [strategy, setStrategy] = useState<'DECOMPOSED' | 'MANUAL'>('DECOMPOSED');
   const [busy, setBusy] = useState<string | null>(null);
+  // Annulation gouvernée inline — window.prompt muet en iframe (défaut EVO-000026/000028)
+  const [cancelFor, setCancelFor] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -168,13 +171,21 @@ export function MissionGraphPanel() {
                     className="bg-amber-600 hover:bg-amber-500 text-white">
                     {busy === 'tick' ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Play className="h-3.5 w-3.5 mr-1.5" />} Tick (vague DAG)
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => {
-                    const reason = window.prompt('Raison d\'annulation (≥ 10 caractères — INV-200) :');
-                    if (reason && reason.trim().length >= 10) act({ action: 'cancel', uid: detail.missionUid, reason }, 'cancel');
-                  }} disabled={!!busy} className="border-red-500/40 text-red-300 hover:border-red-500">
+                  <Button size="sm" variant="outline" onClick={() => setCancelFor(cancelFor === detail.missionUid ? null : detail.missionUid)}
+                    disabled={!!busy} className="border-red-500/40 text-red-300 hover:border-red-500">
                     <Ban className="h-3.5 w-3.5 mr-1.5" /> Annuler
                   </Button>
                 </div>
+                {cancelFor === detail.missionUid && (
+                  <InlinePromptForm
+                    title={`ANNULATION — ${detail.missionUid} (INV-200)`}
+                    fields={[{ key: 'reason', placeholder: 'Raison d’annulation', minLength: 10 }]}
+                    confirmLabel="Confirmer l’annulation"
+                    busy={busy === 'cancel'}
+                    onConfirm={(v) => { act({ action: 'cancel', uid: detail.missionUid, reason: v.reason.trim() }, 'cancel'); setCancelFor(null); }}
+                    onCancel={() => setCancelFor(null)}
+                  />
+                )}
                 <ScrollArea className="max-h-[340px]">
                   <div className="space-y-1.5 pr-2">
                     {detail.tasks.map((t) => (
