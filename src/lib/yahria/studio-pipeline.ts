@@ -25,6 +25,7 @@ import {
 } from './studio';
 import { isBootGateActive, runBootGate, type BootGateReport } from './boot-gate';
 import { isBehavioralGateActive, runBehavioralGate, type BehavioralGateReport } from './behavioral-gate';
+import { isCompletenessGateActive, runCompletenessGate, type CompletenessGateReport } from './completeness-gate';
 
 const WORKSPACE_ROOT = path.join(process.cwd(), 'db', 'workspaces');
 const MAX_DEPENDENCY_SOURCES = 3;
@@ -46,6 +47,8 @@ export const STUDIO_EVENTS = {
   BOOTGATE_RESULT: 'studio.bootgate.result',
   // EVO-000025 — porte comportementale (pytest avant SEALED)
   BEHAVIORALGATE_RESULT: 'studio.behavioralgate.result',
+  // EVO-000026 — porte de complétude (aucun livrable partiel ne quitte GENERATING)
+  COMPLETENESSGATE_RESULT: 'studio.completenessgate.result',
   // R11 — preuve live (sandbox execution)
   LIVE_STARTED: 'studio.live.started',
   LIVE_ATTEMPT: 'studio.live.attempt',
@@ -254,6 +257,35 @@ async function runStudioPipeline(runId: string): Promise<void> {
       }
     }
 
+    // ── PORTE DE COMPLÉTUDE (EVO-000026) — avant TOUTE sortie de GENERATING ──
+    // Un livrable PARTIEL ne franchit jamais cette frontière : remédiation
+    // bornée (1 tour), puis échec classé INFRA|MODÈLE (INV-210). Armée
+    // uniquement si EVO-000026 est PROMOTED (décision humaine = interrupteur).
+    let completenessGate: CompletenessGateReport | null = null;
+    if (await isCompletenessGateActive()) {
+      completenessGate = await runCompletenessGate({
+        runId, runUid, traceId,
+        brief: run.brief, stack: tree.stack,
+        treePaths: tree.files.map((f) => ({ path: f.path, role: f.role })),
+        blueprint: blueprint.map((b: BlueprintEntry) => ({ path: b.path, purpose: b.purpose, dependsOn: b.dependsOn, keyPoints: b.keyPoints, order: b.order })),
+      });
+      emit(STUDIO_EVENTS.COMPLETENESSGATE_RESULT, completenessGate.passed ? 'SUCCESS' : 'CRITICAL',
+        `Studio ${runUid} : porte de complétude (EVO-000026) ${completenessGate.passed ? 'PASS' : `FAIL — classification ${completenessGate.classification ?? '?'}`} — ${completenessGate.stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`, runUid,
+        { passed: completenessGate.passed, classification: completenessGate.classification, totalMs: completenessGate.totalMs, recovered: completenessGate.recovered, stillFailed: completenessGate.stillFailed, stages: completenessGate.stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 220) })) });
+      if (!completenessGate.passed) {
+        const persist = completenessGate.stillFailed.map((s) => `${s.path} (${s.note.slice(0, 80)})`).join(' ; ').slice(0, 240);
+        await failRun(runId, runUid, `porte de complétude (EVO-000026) — classification ${completenessGate.classification ?? '?'} : ${completenessGate.stillFailed.length} fichier(s) en échec persistant — ${persist}`);
+        return; // INV-210 : l'échec INFRA est classé comme tel — JAMAIS compté comme échec d'apprentissage
+      }
+      // remédiation réussie : compteurs rafraîchis depuis la DB (source de vérité)
+      const postRows = await db.generatedFile.findMany({ where: { runId } });
+      generated = postRows.filter((f) => f.state === 'VERIFIED').length;
+      failed = postRows.filter((f) => f.state === 'FAILED').length;
+      retries += completenessGate.addedAttempts;
+      totalGenMs += completenessGate.addedMs;
+      totalBytes += completenessGate.addedBytes;
+    }
+
     // ── VERIFYING — consolidation + livraison workspace + ZIP ────────
     await transitionRun(runId, runUid, 'GENERATING', 'VERIFYING');
     if (generated === 0) {
@@ -316,7 +348,7 @@ async function runStudioPipeline(runId: string): Promise<void> {
 
     // ── SEALED — preuve de scellement + stats finales ────────────────
     await transitionRun(runId, runUid, 'VERIFYING', 'SEALED');
-    const stats = { files: blueprint.length, generated, failed, retries, bytes: totalBytes, genMs: totalGenMs, ...(bootGate ? { bootGate: { passed: bootGate.passed, totalMs: bootGate.totalMs, stages: bootGate.stages.map((s) => ({ stage: s.stage, state: s.state })) } } : {}), ...(behavioralGate ? { behavioralGate: { passed: behavioralGate.passed, totalMs: behavioralGate.totalMs, stages: behavioralGate.stages.map((s) => ({ stage: s.stage, state: s.state })) } } : {}) };
+    const stats = { files: blueprint.length, generated, failed, retries, bytes: totalBytes, genMs: totalGenMs, ...(completenessGate ? { completenessGate: { passed: completenessGate.passed, classification: completenessGate.classification, totalMs: completenessGate.totalMs, recovered: completenessGate.recovered.length, stillFailed: completenessGate.stillFailed.length } } : {}), ...(bootGate ? { bootGate: { passed: bootGate.passed, totalMs: bootGate.totalMs, stages: bootGate.stages.map((s) => ({ stage: s.stage, state: s.state })) } } : {}), ...(behavioralGate ? { behavioralGate: { passed: behavioralGate.passed, totalMs: behavioralGate.totalMs, stages: behavioralGate.stages.map((s) => ({ stage: s.stage, state: s.state })) } } : {}) };
     await db.generationRun.update({
       where: { id: runId },
       data: { workspacePath: `db/workspaces/${runUid}`, zipPath, stats: JSON.stringify(stats) },

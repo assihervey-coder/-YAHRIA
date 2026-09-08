@@ -226,6 +226,29 @@ function recordTelemetry(p: ProviderId, rec: ProviderAttemptRecord): void {
   if (arr.length > TELEMETRY_CAP) arr.shift();
 }
 
+// ── LF-3bis. SNAPSHOT CIRCUIT (pur — sans effet de bord half-open) ──
+// Exposé pour la porte de complétude (EVO-000026) : « cooldown fabric
+// respecté » exige de LIRE l'état des breakers sans les muter (la
+// lecture via breakerOpen() déclencherait la transition half-open).
+
+export interface CircuitSnapshot { anyOpen: boolean; maxRemainingMs: number; openProviders: string[] }
+
+export function circuitCooldownSnapshot(): CircuitSnapshot {
+  const now = Date.now();
+  const openProviders: string[] = [];
+  let maxRemainingMs = 0;
+  for (const id of PROVIDER_IDS) {
+    const b = breakers.get(id);
+    if (!b || b.openedAt === null) continue;
+    const remaining = BREAKER_COOLDOWN_MS - (now - b.openedAt);
+    if (remaining > 0) {
+      openProviders.push(id);
+      if (remaining > maxRemainingMs) maxRemainingMs = remaining;
+    }
+  }
+  return { anyOpen: openProviders.length > 0, maxRemainingMs, openProviders };
+}
+
 export function providerStatuses(): ProviderStatus[] {
   const cfgs = providerConfigs();
   return effectiveOrder().map((id) => {
