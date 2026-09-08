@@ -342,13 +342,16 @@ async function runStudioPipeline(runId: string): Promise<void> {
         // ≤1 cycle par PORTE (≤2 cycles/run) ou legacy 1 cycle/run ; ≤3 fichiers,
         // 1 tentative chacun ; MODÈLE uniquement — un échec INFRA n'est JAMAIS
         // réparé (INV-210) ; armée uniquement si EVO-000028 est PROMOTED (INV-227).
-        const repair = repairBudgetAvailable(repairBudget, 'BOOT') ? null : await runRepairCycle({
-          runId, runUid, traceId, gateKind: 'BOOT',
-          failStages: bootGate.stages.filter((s) => s.state === 'FAIL').map((s) => ({ stage: s.stage, detail: s.detail })),
-          brief: run.brief, stack: tree.stack, blueprint,
-          treePaths: tree.files.map((f) => ({ path: f.path, role: f.role })),
-          workspaceDir,
-        });
+        let repair: Awaited<ReturnType<typeof runRepairCycle>> | null = null;
+        if (repairBudgetAvailable(repairBudget, 'BOOT')) {
+          repair = await runRepairCycle({
+            runId, runUid, traceId, gateKind: 'BOOT',
+            failStages: bootGate.stages.filter((s) => s.state === 'FAIL').map((s) => ({ stage: s.stage, detail: s.detail })),
+            brief: run.brief, stack: tree.stack, blueprint,
+            treePaths: tree.files.map((f) => ({ path: f.path, role: f.role })),
+            workspaceDir,
+          });
+        }
         if (repair?.attempted) {
           consumeRepairBudget(repairBudget, 'BOOT');
           retries += repair.addedAttempts;
@@ -383,13 +386,16 @@ async function runStudioPipeline(runId: string): Promise<void> {
       if (!behavioralGate.passed) {
         // EVO-000028 — boucle de réparation ciblée (budget gouverné EVO-000030 :
         // la porte comportementale garde son PROPRE cycle, même après un cycle BOOT)
-        const repair = repairBudgetAvailable(repairBudget, 'BEHAVIORAL') ? null : await runRepairCycle({
-          runId, runUid, traceId, gateKind: 'BEHAVIORAL',
-          failStages: behavioralGate.stages.filter((s) => s.state === 'FAIL').map((s) => ({ stage: s.stage, detail: s.detail })),
-          brief: run.brief, stack: tree.stack, blueprint,
-          treePaths: tree.files.map((f) => ({ path: f.path, role: f.role })),
-          workspaceDir,
-        });
+        let repair: Awaited<ReturnType<typeof runRepairCycle>> | null = null;
+        if (repairBudgetAvailable(repairBudget, 'BEHAVIORAL')) {
+          repair = await runRepairCycle({
+            runId, runUid, traceId, gateKind: 'BEHAVIORAL',
+            failStages: behavioralGate.stages.filter((s) => s.state === 'FAIL').map((s) => ({ stage: s.stage, detail: s.detail })),
+            brief: run.brief, stack: tree.stack, blueprint,
+            treePaths: tree.files.map((f) => ({ path: f.path, role: f.role })),
+            workspaceDir,
+          });
+        }
         if (repair?.attempted) {
           consumeRepairBudget(repairBudget, 'BEHAVIORAL');
           retries += repair.addedAttempts;
