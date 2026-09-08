@@ -1,0 +1,329 @@
+{
+  "sealedTotal": 0,
+  "sealedCycle0": 0,
+  "sealedCycle1": 0,
+  "sealedCycle2": 0,
+  "repairsEngaged": 2,
+  "countedSlots": 2,
+  "aggregateRate": 0,
+  "ac1": false,
+  "ac2": false,
+  "ac3": true,
+  "ac4": true,
+  "wrongMode": 0,
+  "verdicts": [
+    {
+      "slot": 1,
+      "runUid": "RUN-000051",
+      "state": "FAILED",
+      "attempts": 2,
+      "sealedFirstPass": false,
+      "sealedWithRepair": false,
+      "classification": "MODÈLE",
+      "error": "porte comportementale (EVO-000025) — PYTEST : pytest exit 1 — 5 failed, 1 warning in 1.62s — test_health: >       assert \"name\" in data | E       AssertionError: assert 'name' in {'service': 'Mobile Money Hub', 'status': 'healthy', 'timestamp': ' [réparation EVO-000028 : 0 réparé(s), 2 en échec persistant — re-porte FAIL]",
+      "repairEngaged": true,
+      "repairCycles": 2,
+      "repairCyclesStats": null,
+      "repairBudgetMode": null,
+      "repairKinds": [
+        "BOOT",
+        "BEHAVIORAL"
+      ],
+      "repairTargets": [
+        "main.py",
+        "schemas.py",
+        "config.py",
+        "tests/test_api.py"
+      ],
+      "repairRepaired": [
+        "main.py",
+        "schemas.py"
+      ],
+      "repairStillBroken": [
+        "config.py",
+        "main.py",
+        "tests/test_api.py"
+      ],
+      "repairEvidence": [
+        "EV-ARTIFACT-000728: Fichier réparé par la boucle EVO-000028 : main.py (3004 octets) — boot sans réponse HTTP — racine visée : uvicorn main:app sans réponse HTTP en 30s — Traceback ",
+        "EV-ARTIFACT-000729: Fichier réparé par la boucle EVO-000028 : schemas.py (1988 octets) — ImportError — « PaymentInitResponse » absent de schemas (contrat inter-fichiers rompu, EVO-",
+        "EV-INCIDENT-000730: Réparation EVO-000028 échouée : config.py — échec après 1 tentatives — dernier verdict : erreur modèle : LLM fabric exhausted — zai:circuit OPEN (cooldown 90s) ",
+        "EV-INCIDENT-000731: Boucle de réparation EVO-000028 (BOOT) : 2 fichier(s) réparé(s), 1 en échec persistant — re-vérification de la porte par l'orchestrateur : RUN-000051",
+        "EV-INCIDENT-000734: Réparation EVO-000028 échouée : main.py — échec après 1 tentatives — dernier verdict : erreur modèle : LLM fabric exhausted — zai:circuit OPEN (cooldown 90s) | ",
+        "EV-INCIDENT-000735: Réparation EVO-000028 échouée : tests/test_api.py — échec après 1 tentatives — dernier verdict : erreur modèle : LLM fabric exhausted — zai:circuit OPEN (cooldo",
+        "EV-INCIDENT-000736: Boucle de réparation EVO-000028 (BEHAVIORAL) : 0 fichier(s) réparé(s), 2 en échec persistant — re-vérification de la porte par l'orchestrateur : RUN-000051"
+      ],
+      "filesExpected": 13,
+      "filesVerified": 13,
+      "filesFirstPass": 0,
+      "firstPassRate": 0,
+      "perFile": [
+        {
+          "path": "gateways/__init__.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 167,
+          "repaired": false
+        },
+        {
+          "path": "main.py",
+          "state": "VERIFIED",
+          "attempts": 6,
+          "bytes": 3004,
+          "repaired": true
+        },
+        {
+          "path": "config.py",
+          "state": "VERIFIED",
+          "attempts": 5,
+          "bytes": 685,
+          "repaired": true
+        },
+        {
+          "path": "gateways/base.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 1862,
+          "repaired": false
+        },
+        {
+          "path": "gateways/notchpay.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 4309,
+          "repaired": false
+        },
+        {
+          "path": "gateways/pesapal.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 2062,
+          "repaired": false
+        },
+        {
+          "path": "models.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 219,
+          "repaired": false
+        },
+        {
+          "path": "schemas.py",
+          "state": "VERIFIED",
+          "attempts": 5,
+          "bytes": 1988,
+          "repaired": true
+        },
+        {
+          "path": "security.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 1695,
+          "repaired": false
+        },
+        {
+          "path": "webhooks.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 3153,
+          "repaired": false
+        },
+        {
+          "path": "tests/__init__.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 140,
+          "repaired": false
+        },
+        {
+          "path": "tests/test_api.py",
+          "state": "VERIFIED",
+          "attempts": 5,
+          "bytes": 1837,
+          "repaired": true
+        },
+        {
+          "path": "requirements.txt",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 72,
+          "repaired": false
+        }
+      ],
+      "gate3Evidence": [
+        "EV-ARTIFACT-000725: Porte de complétude (EVO-000026) PASS : RUN-000051 — INVENTAIRE:FAIL CLASSIFICATION:PASS CIRCUIT:SKIP CIRCUIT-POST:PASS REMÉDIATION:PASS VER"
+      ],
+      "gates": {},
+      "replayedFrom": [
+        "RUN-000050"
+      ]
+    },
+    {
+      "slot": 2,
+      "runUid": "RUN-000052",
+      "state": "FAILED",
+      "attempts": 1,
+      "sealedFirstPass": false,
+      "sealedWithRepair": false,
+      "classification": "MODÈLE",
+      "error": "porte de boot (EVO-000016) — BOOT : uvicorn main:app sans réponse HTTP en 30s — Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/home/z/ [réparation EVO-000028 : 3 réparé(s), 0 en échec persistant — re-porte FAIL]",
+      "repairEngaged": true,
+      "repairCycles": 1,
+      "repairCyclesStats": null,
+      "repairBudgetMode": null,
+      "repairKinds": [
+        "BOOT"
+      ],
+      "repairTargets": [
+        "main.py",
+        "schemas.py",
+        "config.py"
+      ],
+      "repairRepaired": [
+        "main.py",
+        "schemas.py",
+        "config.py"
+      ],
+      "repairStillBroken": [],
+      "repairEvidence": [
+        "EV-ARTIFACT-000755: Fichier réparé par la boucle EVO-000028 : main.py (3252 octets) — boot sans réponse HTTP — racine visée : uvicorn main:app sans réponse HTTP en 30s — Traceback ",
+        "EV-ARTIFACT-000756: Fichier réparé par la boucle EVO-000028 : schemas.py (2122 octets) — ImportError — « PaymentInitResponse » absent de schemas (contrat inter-fichiers rompu, EVO-",
+        "EV-ARTIFACT-000757: Fichier réparé par la boucle EVO-000028 : config.py (685 octets) — import racine de main.py — chemin d'exécution du boot",
+        "EV-ARTIFACT-000758: Boucle de réparation EVO-000028 (BOOT) : 3 fichier(s) réparé(s), 0 en échec persistant — re-vérification de la porte par l'orchestrateur : RUN-000052"
+      ],
+      "filesExpected": 13,
+      "filesVerified": 13,
+      "filesFirstPass": 0,
+      "firstPassRate": 0,
+      "perFile": [
+        {
+          "path": "gateways/__init__.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 167,
+          "repaired": false
+        },
+        {
+          "path": "main.py",
+          "state": "VERIFIED",
+          "attempts": 5,
+          "bytes": 3252,
+          "repaired": true
+        },
+        {
+          "path": "config.py",
+          "state": "VERIFIED",
+          "attempts": 5,
+          "bytes": 685,
+          "repaired": true
+        },
+        {
+          "path": "gateways/base.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 1862,
+          "repaired": false
+        },
+        {
+          "path": "gateways/notchpay.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 3199,
+          "repaired": false
+        },
+        {
+          "path": "gateways/pesapal.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 1800,
+          "repaired": false
+        },
+        {
+          "path": "models.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 620,
+          "repaired": false
+        },
+        {
+          "path": "schemas.py",
+          "state": "VERIFIED",
+          "attempts": 5,
+          "bytes": 2122,
+          "repaired": true
+        },
+        {
+          "path": "security.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 1695,
+          "repaired": false
+        },
+        {
+          "path": "webhooks.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 4136,
+          "repaired": false
+        },
+        {
+          "path": "tests/__init__.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 205,
+          "repaired": false
+        },
+        {
+          "path": "tests/test_api.py",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 2083,
+          "repaired": false
+        },
+        {
+          "path": "requirements.txt",
+          "state": "VERIFIED",
+          "attempts": 4,
+          "bytes": 72,
+          "repaired": false
+        }
+      ],
+      "gate3Evidence": [
+        "EV-ARTIFACT-000752: Porte de complétude (EVO-000026) PASS : RUN-000052 — INVENTAIRE:FAIL CLASSIFICATION:PASS CIRCUIT:SKIP CIRCUIT-POST:PASS REMÉDIATION:PASS VER"
+      ],
+      "gates": {},
+      "replayedFrom": []
+    },
+    {
+      "slot": 3,
+      "runUid": "RUN-000058",
+      "state": "FAILED",
+      "attempts": 3,
+      "sealedFirstPass": false,
+      "sealedWithRepair": false,
+      "classification": "INFRA-EXCLU",
+      "error": "porte de complétude (EVO-000026) — classification INFRA : 13 fichier(s) en échec persistant — gateways/__init__.py (échec après 1 tentatives — dernier verdict : erreur modèle : LLM fabric exhauste) ; main.py (échec après 1 tentatives — dernier verdict : erreur modèle : LLM fabric exhauste) ; config.py (échec après 1 tentatives — der",
+      "repairEngaged": false,
+      "repairCycles": 0,
+      "repairCyclesStats": null,
+      "repairBudgetMode": null,
+      "repairKinds": [],
+      "repairTargets": [],
+      "repairRepaired": [],
+      "repairStillBroken": [],
+      "repairEvidence": [],
+      "filesExpected": 13,
+      "filesVerified": 0,
+      "filesFirstPass": 0,
+      "firstPassRate": 0,
+      "perFile": [],
+      "gate3Evidence": [],
+      "gates": null,
+      "replayedFrom": [
+        "RUN-000056",
+        "RUN-000057",
+        "RUN-000058"
+      ]
+    }
+  ]
+}
