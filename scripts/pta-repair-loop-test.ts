@@ -1,12 +1,14 @@
 #!/usr/bin/env bun
 // ═══════════════════════════════════════════════════════════════════
 // YAHRIA — TESTS BOUCLE DE RÉPARATION CIBLÉE (EVO-000028 + EVO-000029
-// + EVO-000030) — PTA-002 it.10 · Tests unitaires de run-repair-loop.ts :
-// armement réel, ciblage PUR (détails de portes RÉELS it.7 + détails
-// FIDÈLES EVO-000029), contrats inter-fichiers (RC3), résolution
-// d'imports, classification INV-210, budget PAR PORTE + contrat pydantic
-// v2 + contrat comportemental (EVO-000030), drills d'armement sous
-// registre temporairement PROMOTED / ROLLED_BACK (promotion-safe).
+// + EVO-000030 + EVO-000031) — PTA-002 it.11 · Tests unitaires de
+// run-repair-loop.ts : armement réel, ciblage PUR (détails de portes RÉELS
+// it.7 + détails FIDÈLES EVO-000029), contrats inter-fichiers (RC3),
+// résolution d'imports, classification INV-210, budget PAR PORTE + contrat
+// pydantic v2 + contrat comportemental (EVO-000030), FERMETURE DES
+// DÉPENDANCES (EVO-000031 : imports réels d'abord, bornes 5/3600, fixtures
+// réelles RUN-000035/41), drills d'armement sous registre temporairement
+// PROMOTED / ROLLED_BACK (promotion-safe).
 //   bun run scripts/pta-repair-loop-test.ts
 // PROMOTION-SAFE : l'état réel du registre est PRÉSERVÉ à l'identique
 // (les drills manipulent l'état puis le restaurent EXACTEMENT — la
@@ -17,12 +19,15 @@ import { PrismaClient } from '@prisma/client';
 import {
   isRunRepairActive,
   resetRunRepairCache,
+  isDependencyClosureActive,
+  resetDependencyClosureCache,
   runRepairCycle,
   mapGateNotesToTargets,
   resolvePythonImports,
   extractPythonContracts,
   buildSiblingContracts,
   RUN_REPAIR_EVO_UID,
+  DEPENDENCY_CLOSURE_EVO_UID,
   REPAIR_MAX_FILES,
 } from '../src/lib/yahria/run-repair-loop';
 import { pytestFailureDetail } from '../src/lib/yahria/behavioral-gate';
@@ -44,8 +49,12 @@ const TREE = [
   'routes/payments.py', 'routes/webhooks.py', 'services/ledger.py',
   'tests/__init__.py', 'tests/test_api.py', 'requirements.txt',
 ];
+// arbre RÉEL des runs it.10 (13 fichiers générés) — TREE + les modules
+// racine réels que l'approximation T3/T7 ne porte pas (security.py,
+// webhooks.py racine, gateways/__init__.py) — requis pour les fixtures T11
+const TREE31 = [...TREE, 'security.py', 'webhooks.py', 'gateways/__init__.py'];
 
-console.log('\nPTA-002 · Boucle de réparation ciblée (EVO-000028 + EVO-000029 + EVO-000030) — tests unitaires\n');
+console.log('\nPTA-002 · Boucle de réparation ciblée (EVO-000028 + EVO-000029 + EVO-000030 + EVO-000031) — tests unitaires\n');
 
 // ── RR-T1. ARMEMENT GOUVERNÉ — le registre EST l'interrupteur ──────
 const stateBefore = await db.evolutionProposal.findUnique({ where: { proposalUid: RUN_REPAIR_EVO_UID } });
@@ -400,10 +409,144 @@ check('T10.12 drill ROLLED_BACK : budget PAR PORTE désarmé sans redéploiement
 check('T10.13 drill re-PROMOTED : budget PAR PORTE ré-armé sans redéploiement', drill30BackOn);
 check(`T10.14 état EXACT restauré après le drill (${state30Before?.state} — décision humaine intacte, INV-227)`, restored30);
 
+// ── RR-T11. EVO-000031 — FERMETURE DES DÉPENDANCES (fixtures réelles it.10) ──
+// (protocole signé : DC1 — imports réels de la cible AVANT les co-cibles ;
+//  DC2 — bornes 5 frères / 3600 car. ; ROLLED_BACK → ordre/bornes EVO-000029
+//  EXACTS. Fixtures tirées des workspaces réels RUN-000035 / RUN-000041)
+const state31Before = await db.evolutionProposal.findUnique({ where: { proposalUid: DEPENDENCY_CLOSURE_EVO_UID } });
+const promoted31Real = state31Before?.state === 'PROMOTED';
+check(`T11.1 isDependencyClosureActive() reflète le registre RÉEL (EVO-000031 ${state31Before?.state} en DB)`,
+  (await isDependencyClosureActive()) === promoted31Real);
+
+// FIXTURE RUN-000035 (workspace réel) : security.py exports réels, main.py réduit fidèle
+const securityPy035 = [
+  'import hmac', 'import hashlib', 'import base64',
+  'def create_token(payload: Dict[str, Any]) -> str:', '    return "tok"',
+  'def verify_webhook_signature(raw_body: bytes, signature: str, SECRET_KEY: str = None) -> bool:', '    return True',
+  'def _base64url_encode(data: bytes) -> str:', '    return ""',
+].join('\n');
+const gatewaysInit041 = [
+  'from .base import BaseGateway', 'from .notchpay import NotchPayGateway', 'from .pesapal import PesaPal',
+  'def get_gateway(gateway_name: str, config: dict) -> BaseGateway:', '    return None',
+].join('\n');
+const pesapalPy035 = [
+  'from fastapi import HTTPException, status',
+  'from .base import BaseGateway',
+  'from security import verify_hmac',
+  'from models import PaymentStatus',
+  'from schemas import PaymentInitiationRequest',
+].join('\n');
+const mainPy035 = [
+  'from fastapi import FastAPI', 'import gateways', 'import security', 'from config import HUB_NAME',
+  'def health():', '    return {"status": "healthy"}',
+  'def list_gateways():', '    return gateways.get_gateway("notchpay", {})',
+  'def initiate(payload):', '    gw = gateways.get_gateway("notchpay", {})', '    return gw.initiate_payment()',
+].join('\n');
+const db035 = new Map<string, string>([
+  ['gateways/base.py', 'class BaseGateway:\n    def initiate_payment(self):\n        raise NotImplementedError\n'],
+  ['security.py', securityPy035],
+  ['models.py', 'class PaymentStatus(BaseModel):\n    pending: str\n'],
+  ['schemas.py', 'class PaymentInitiationRequest(BaseModel):\n    amount: float\n'],
+  ['main.py', mainPy035],
+  ['gateways/__init__.py', gatewaysInit041],
+  ['config.py', 'HUB_NAME = "hub"\n'],
+]);
+const reader035 = async (p: string) => db035.get(p) ?? null;
+
+// DC1 — réparer pesapal.py (co-cibles [main.py, gateways/__init__.py] comme l'it.10 slot 1)
+const t112 = await buildSiblingContracts(
+  'gateways/pesapal.py', pesapalPy035, ['main.py', 'gateways/__init__.py'], TREE31, reader035,
+  { depsFirst: true, maxSiblings: 5, maxChars: 3600 },
+);
+const sec112 = t112.find((s) => s.path === 'security.py');
+check('T11.2 (RUN-000035 réel) depsFirst : security.py ENTRE avec ses exports réels (verify_webhook_signature) — verify_hmac halluciné impossible',
+  !!sec112 && sec112.lines.some((l) => l.startsWith('def verify_webhook_signature(')), t112.map((s) => s.path).join(','));
+check('T11.3 (DC1+BF-DC1) dépendances importées d\u2019abord (from .base résolu → gateways/base.py en tête) et co-cible non importée en dernier',
+  t112[0]?.path === 'gateways/base.py' && t112[t112.length - 1].path === 'main.py', t112.map((s) => s.path).join(','));
+
+// ROLLBACK — ordre signé EVO-000029 (défaut 3/2400) : le défaut it.10 est REPRODUIT
+const t112old = await buildSiblingContracts(
+  'gateways/pesapal.py', pesapalPy035, ['main.py', 'gateways/__init__.py'], TREE31, reader035,
+);
+check('T11.4 ordre signé EVO-000029 (défaut) : security.py EXCLU (3 slots consommés par co-cibles/config) — défaut it.10 reproduit',
+  !t112old.some((s) => s.path === 'security.py'), t112old.map((s) => s.path).join(','));
+
+// FIXTURE RUN-000041 (workspace réel) : réparer main.py doit voir la fabrique à 2 args
+const mainPy041 = [
+  'from fastapi import FastAPI', 'import gateways', 'import security',
+  'from config import HUB_NAME', 'from models import PaymentRequest',
+].join('\n');
+const db041 = new Map<string, string>([
+  ['config.py', 'HUB_NAME = "hub"\ndef get_gateway_configs():\n    return {}\n'],
+  ['models.py', 'class PaymentRequest(BaseModel):\n    order_id: str\n'],
+  ['gateways/__init__.py', gatewaysInit041],
+  ['security.py', securityPy035],
+]);
+const t113 = await buildSiblingContracts(
+  'main.py', mainPy041, ['config.py', 'models.py'], TREE31,
+  async (p) => db041.get(p) ?? null,
+  { depsFirst: true, maxSiblings: 5, maxChars: 3600 },
+);
+check('T11.5 (RUN-000041 réel) réparer main.py : le contrat de gateways/__init__.py avec get_gateway(gateway_name: str, config: dict) EST injecté (2 args — get_gateway(name) halluciné impossible)',
+  t113.find((s) => s.path === 'gateways/__init__.py')?.lines.some((l) => l.startsWith('def get_gateway(gateway_name: str, config: dict)')) === true, t113.map((s) => s.path).join(','));
+
+// DC2 — bornes : 6 dépendances résolues → EXACTEMENT 5 contrats (le 6e sort)
+const mainPy6 = 'from models import X\nfrom schemas import Y\nfrom security import Z\nimport gateways\nimport webhooks\nimport config\n';
+const db6 = new Map<string, string>([
+  ['models.py', 'class M(BaseModel):\n    a: str\n'],
+  ['schemas.py', 'class S(BaseModel):\n    b: str\n'],
+  ['security.py', 'def tok() -> str:\n    return ""\n'],
+  ['gateways/__init__.py', 'def get_gateway(n: str, c: dict):\n    return None\n'],
+  ['config.py', 'HUB_NAME = "hub"\n'],
+  ['routes/webhooks.py', 'def ack(sig: str) -> bool:\n    return True\n'],
+]);
+const t114 = await buildSiblingContracts(
+  'main.py', mainPy6, ['main.py'], TREE31,
+  async (p) => db6.get(p) ?? null,
+  { depsFirst: true, maxSiblings: 5, maxChars: 3600 },
+);
+check('T11.6 (DC2) 6 dépendances résolues → EXACTEMENT 5 frères (borne maxSiblings=5, config.py sort en dernier)',
+  t114.length === 5 && !t114.some((s) => s.path === 'config.py'), t114.map((s) => s.path).join(','));
+
+// DC2 — budget 3600 car. : contrats longs (14 lignes max/extraction) × 3 dépendances > 3600 → TRONQUÉS
+const longDef = (n: number) => `def f${n}(${'a'.repeat(80)}: str) -> str:`;
+const longFile = Array.from({ length: 14 }, (_, i) => longDef(i)).join('\n'); // 14 lignes ≈ 1430 car.
+const t115 = await buildSiblingContracts(
+  'main.py', 'from models import X\nfrom schemas import Y\nfrom security import Z', ['main.py'], TREE31,
+  async () => longFile,
+  { depsFirst: true, maxSiblings: 5, maxChars: 3600 },
+);
+const totalChars = t115.reduce((n, s) => n + s.lines.join('\n').length, 0);
+check('T11.7 (DC2) budget 3600 car. respecté ET réellement testé (troncature active : total > 3000)',
+  totalChars <= 3600 && totalChars > 3000, `${totalChars} car. / ${t115.length} frères`);
+
+// drill promotion-safe EVO-000031 : ROLLED_BACK → ordre/bornes EVO-000029 restaurés SANS redéploiement
+let drill31Off = false, drill31BackOn = false, restored31 = false;
+try {
+  await db.evolutionProposal.update({ where: { proposalUid: DEPENDENCY_CLOSURE_EVO_UID }, data: { state: 'ROLLED_BACK' } });
+  resetDependencyClosureCache();
+  drill31Off = (await isDependencyClosureActive()) === false;
+  await db.evolutionProposal.update({ where: { proposalUid: DEPENDENCY_CLOSURE_EVO_UID }, data: { state: 'PROMOTED' } });
+  resetDependencyClosureCache();
+  drill31BackOn = (await isDependencyClosureActive()) === true;
+} finally {
+  // PROMOTION-SAFE : l'état PRÉ-DRILL est restauré à l'identique (INV-227)
+  await db.evolutionProposal.update({
+    where: { proposalUid: DEPENDENCY_CLOSURE_EVO_UID },
+    data: { state: state31Before?.state ?? 'UNDER_REVIEW' },
+  });
+  resetDependencyClosureCache();
+  const back31 = await db.evolutionProposal.findUnique({ where: { proposalUid: DEPENDENCY_CLOSURE_EVO_UID } });
+  restored31 = back31?.state === state31Before?.state;
+}
+check('T11.8 drill ROLLED_BACK : fermeture DÉSARMÉE sans redéploiement (ordre/bornes EVO-000029 restaurés)', drill31Off);
+check('T11.9 drill re-PROMOTED : fermeture RÉ-ARMÉE sans redéploiement', drill31BackOn);
+check(`T11.10 état EXACT restauré après le drill (${state31Before?.state} — décision humaine intacte, INV-227)`, restored31);
+
 await captureAndPersist({
   category: 'POLICY', criticality: 'STANDARD', actorType: 'SYSTEM', actorId: 'pta-repair-loop-test',
-  claim: `Drill armement EVO-000028+000029+000030 : boucle armée, budget par porte + pydantic v2 vérifiés, états ${stateBefore?.state}/${state30Before?.state} restaurés à l'identique (${passed} PASS / ${failed} FAIL) — décisions humaines intactes (INV-227)`,
-  payload: { proposalUid: RUN_REPAIR_EVO_UID, proposal30Uid: 'EVO-000030', statePreserved: stateBefore?.state, state30Preserved: state30Before?.state, passed, failed, drillArmed, drillInfra, drillNoTarget, restoredOk, drill30Off, drill30BackOn, restored30 },
+  claim: `Drill armement EVO-000028+000029+000030+000031 : boucle armée, budget par porte + pydantic v2 + fermeture des dépendances vérifiés, états ${stateBefore?.state}/${state30Before?.state}/${state31Before?.state} restaurés à l'identique (${passed} PASS / ${failed} FAIL) — décisions humaines intactes (INV-227)`,
+  payload: { proposalUid: RUN_REPAIR_EVO_UID, proposal30Uid: 'EVO-000030', proposal31Uid: 'EVO-000031', statePreserved: stateBefore?.state, state30Preserved: state30Before?.state, state31Preserved: state31Before?.state, passed, failed, drillArmed, drillInfra, drillNoTarget, restoredOk, drill30Off, drill30BackOn, restored30, drill31Off, drill31BackOn, restored31 },
 });
 
 console.log(`\n═ Résultat : ${passed} PASS / ${failed} FAIL ═\n`);

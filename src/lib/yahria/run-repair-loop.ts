@@ -60,6 +60,23 @@
 // golden-exemplar.ts. Le MÉCANISME de cette boucle est INCHANGÉ : ≤3
 // fichiers, 1 tentative/fichier, MODÈLE uniquement (INV-210), attempts
 // honnêtes, bilan scellé par cycle.
+//
+// EVO-000031 (PROMOTED par HUMAN:reviewer — fermeture des dépendances,
+// causes prouvées par reproduction vivante sur les workspaces it.10 :
+// RUN-000035 « ImportError: cannot import name 'verify_hmac' » depuis
+// pesapal.py réparé ; RUN-000041 3 pytest FAIL = 3 appels hallucinés
+// — get_gateway(name) au lieu de (name, config), verify_webhook_signature
+// au lieu du réel verify_hmac) :
+//   DC1 — buildSiblingContracts ordonne les modules internes RÉELLEMENT
+//         importés par la cible AVANT les co-cibles : les co-cibles sont
+//         MUTABLES (régénérées dans le même cycle), les dépendances
+//         existantes sont la vérité FIXE ;
+//   DC2 — bornes relevées : 5 frères / 3600 car. — 2-3 co-cibles ne
+//         consomment plus tous les slots (l'ordre signé EVO-000029 les
+//         faisait gagner à tous les coups).
+//   Gouverné par isDependencyClosureActive() (registre = interrupteur,
+//   INV-227) ; ROLLED_BACK → ordre et bornes EVO-000029 EXACTS
+//   (co-cibles d'abord, 3 / 2400) sans redéploiement.
 // ═══════════════════════════════════════════════════════════════════
 
 import { createHash } from 'crypto';
@@ -99,6 +116,36 @@ export async function isRunRepairActive(): Promise<boolean> {
 /** Invalidation forcée du cache d'armement (tests, rollback drill). */
 export function resetRunRepairCache(): void {
   activeCache = null;
+}
+
+// ── RR-1 bis. ARMEMENT EVO-000031 — fermeture des dépendances ────────
+
+export const DEPENDENCY_CLOSURE_EVO_UID = 'EVO-000031';
+
+let closureCache: { value: boolean; at: number } | null = null;
+
+/**
+ * EVO-000031 — la fermeture des dépendances (imports réels de la cible
+ * d'abord, bornes 5/3600) n'est active QUE si la proposition est PROMOTED
+ * (registre = interrupteur, INV-227) ; registre indisponible → comportement
+ * signé EVO-000029 (jamais actif par accident).
+ */
+export async function isDependencyClosureActive(): Promise<boolean> {
+  if (closureCache && Date.now() - closureCache.at < ACTIVE_TTL_MS) return closureCache.value;
+  let value = false;
+  try {
+    const p = await db.evolutionProposal.findUnique({ where: { proposalUid: DEPENDENCY_CLOSURE_EVO_UID } });
+    value = p?.state === 'PROMOTED';
+  } catch {
+    value = false;
+  }
+  closureCache = { value, at: Date.now() };
+  return value;
+}
+
+/** Invalidation forcée du cache d'armement EVO-000031 (tests, rollback drill). */
+export function resetDependencyClosureCache(): void {
+  closureCache = null;
 }
 
 // ── RR-2. TYPES ─────────────────────────────────────────────────────
@@ -162,7 +209,12 @@ export function resolvePythonImports(content: string, treePaths: string[]): stri
   const out = new Set<string>();
   const tryMod = (mod: string): void => {
     if (!/^[\w.]+$/.test(mod)) return;
-    const rel = mod.split('.').join('/');
+    // BF-DC1 (outillage, fidélité des entrées — pas un changement de
+    // protocole) : les modules RELATIFS (« from .base import X »)
+    // produisaient un candidat « /base.py » et le matcher testait
+    // « //base.py » — jamais résolu. filter(Boolean) normalise les points
+    // initiaux : '.base' → 'base' → suffixe « /base.py » → gateways/base.py.
+    const rel = mod.split('.').filter(Boolean).join('/');
     const candidates = [`${rel}.py`, `${rel}/__init__.py`];
     for (const c of candidates) {
       const hit = treePaths.find((p) => p === c || p.endsWith(`/${c}`));
@@ -359,6 +411,10 @@ export interface SiblingContract { path: string; lines: string[] }
  * EVO-000029 (RC3) — contexte frères d'un fichier à réparer. Frères =
  * co-cibles du cycle + modules internes importés par le contenu courant.
  * PURE par injection du lecteur (async pour la DB, fake Map en test).
+ * EVO-000031 (DC1/DC2) — opts.depsFirst inverse l'ordre : les imports
+ * internes RÉELS d'abord (contrats stables, lus À JOUR), co-cibles ensuite
+ * ; bornes portées à 5 frères / 3600 car. par l'appelant quand PROMOTED.
+ * Sans opts (défaut) → comportement signé EVO-000029 EXACT (rollback).
  */
 export async function buildSiblingContracts(
   targetPath: string,
@@ -366,7 +422,7 @@ export async function buildSiblingContracts(
   coTargets: string[],
   treePaths: string[],
   readContent: (p: string) => Promise<string | null>,
-  opts: { maxSiblings?: number; maxChars?: number } = {},
+  opts: { maxSiblings?: number; maxChars?: number; depsFirst?: boolean } = {},
 ): Promise<SiblingContract[]> {
   const maxSiblings = opts.maxSiblings ?? 3;
   const maxChars = opts.maxChars ?? 2400;
@@ -377,9 +433,17 @@ export async function buildSiblingContracts(
     seen.add(p);
     order.push(p);
   };
-  for (const c of coTargets) add(c); // co-cibles d'abord (réparées ENSEMBLE)
   const internalImports = currentContent ? resolvePythonImports(currentContent, treePaths) : [];
-  for (const imp of internalImports) add(imp);
+  if (opts.depsFirst) {
+    // EVO-000031 (DC1) — dépendances STABLES d'abord : les co-cibles sont
+    // régénérées dans le MÊME cycle (contrats mutables), les modules
+    // importés existants sont la vérité fixe (RUN-000035/000041).
+    for (const imp of internalImports) add(imp);
+    for (const c of coTargets) add(c);
+  } else {
+    for (const c of coTargets) add(c); // co-cibles d'abord (réparées ENSEMBLE, EVO-000029)
+    for (const imp of internalImports) add(imp);
+  }
   const out: SiblingContract[] = [];
   let budget = maxChars;
   for (const p of order) {
@@ -477,6 +541,10 @@ export async function runRepairCycle(input: RepairCycleInput): Promise<RepairCyc
   };
 
   // 4. RÉPARATION — 1 tentative par fichier, verdict EXACT + contenu actuel
+  // EVO-000031 (DC1/DC2) — fermeture des dépendances si PROMOTED : imports
+  // réels de la cible d'abord, bornes 5 frères / 3600 car. ; sinon
+  // comportement signé EVO-000029 (co-cibles d'abord, 3 / 2400).
+  const closureActive = await isDependencyClosureActive();
   for (const target of targets) {
     if (result.addedAttempts > 0) await new Promise((r) => setTimeout(r, PACING_MS));
     const row = await db.generatedFile.findFirst({ where: { runId: input.runId, path: target.path } });
@@ -494,13 +562,15 @@ export async function runRepairCycle(input: RepairCycleInput): Promise<RepairCyc
     // sont LA valeur ajoutée — 800 car. les tronquait à nouveau
     const verdict = (own.length ? own : input.failStages.map((s) => `${s.stage} : ${s.detail}`)).join(' || ').slice(0, 2000);
 
-    // EVO-000029 (RC3) — contrat des frères : co-cibles du cycle + modules
-    // internes importés par le contenu courant, lus À JOUR en DB (une
-    // réparation antérieure du cycle est visible pour les suivantes)
+    // EVO-000029 (RC3) + EVO-000031 (DC1/DC2) — contrat des frères : modules
+    // internes importés par le contenu courant + co-cibles du cycle, lus
+    // À JOUR en DB (une réparation antérieure du cycle est visible pour les
+    // suivantes) ; l'ORDRE et les BORNES dépendent de isDependencyClosureActive()
     const siblings = await buildSiblingContracts(
       target.path, current,
       targets.map((t) => t.path), treePathList,
       async (p) => (await db.generatedFile.findFirst({ where: { runId: input.runId, path: p } }))?.content ?? null,
+      closureActive ? { depsFirst: true, maxSiblings: 5, maxChars: 3600 } : {},
     );
     const siblingPoint = siblings.length
       ? `SIBLING CONTRACTS (EVO-000029 cross-file repair context) — these sibling files ALREADY define these exact symbols; import and use them EXACTLY as declared, NEVER re-declare, re-name, or invent different shapes:\n${siblings.map((s) => `--- ${s.path} ---\n${s.lines.join('\n')}`).join('\n')}`
