@@ -26,6 +26,7 @@ import {
 import { isBootGateActive, runBootGate, type BootGateReport } from './boot-gate';
 import { isBehavioralGateActive, runBehavioralGate, type BehavioralGateReport } from './behavioral-gate';
 import { isCompletenessGateActive, runCompletenessGate, type CompletenessGateReport } from './completeness-gate';
+import { runRepairCycle } from './run-repair-loop';
 
 const WORKSPACE_ROOT = path.join(process.cwd(), 'db', 'workspaces');
 const MAX_DEPENDENCY_SOURCES = 3;
@@ -49,6 +50,8 @@ export const STUDIO_EVENTS = {
   BEHAVIORALGATE_RESULT: 'studio.behavioralgate.result',
   // EVO-000026 — porte de complétude (aucun livrable partiel ne quitte GENERATING)
   COMPLETENESSGATE_RESULT: 'studio.completenessgate.result',
+  // EVO-000028 — boucle de réparation ciblée au niveau run (1 cycle, ≤3 fichiers)
+  REPAIR_CYCLE: 'studio.repair.cycle',
   // R11 — preuve live (sandbox execution)
   LIVE_STARTED: 'studio.live.started',
   LIVE_ATTEMPT: 'studio.live.attempt',
@@ -196,6 +199,7 @@ async function runStudioPipeline(runId: string): Promise<void> {
     let retries = 0;
     let totalBytes = 0;
     let totalGenMs = 0;
+    let repairUsed = false; // EVO-000028 : budget UNE SEULE boucle de réparation par run
 
     for (const entry of blueprint) {
       const fileRow = await db.generatedFile.findFirst({ where: { runId, path: entry.path } });
@@ -325,9 +329,36 @@ async function runStudioPipeline(runId: string): Promise<void> {
         `Studio ${runUid} : porte de boot (EVO-000016) ${bootGate.passed ? 'PASS' : 'FAIL'} — ${bootGate.stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`, runUid,
         { passed: bootGate.passed, totalMs: bootGate.totalMs, stages: bootGate.stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 220) })) });
       if (!bootGate.passed) {
-        const fail = bootGate.stages.find((s) => s.state === 'FAIL');
-        await failRun(runId, runUid, `porte de boot (EVO-000016) — ${fail?.stage ?? '?'} : ${(fail?.detail ?? 'échec boot').slice(0, 240)}`);
-        return;
+        // EVO-000028 — boucle de réparation ciblée : 1 cycle/run, ≤3 fichiers, 1 tentative
+        // chacun ; MODÈLE uniquement — un échec INFRA n'est JAMAIS réparé (INV-210) ; armée
+        // uniquement si EVO-000028 est PROMOTED (décision humaine = interrupteur, INV-227).
+        const repair = repairUsed ? null : await runRepairCycle({
+          runId, runUid, traceId, gateKind: 'BOOT',
+          failStages: bootGate.stages.filter((s) => s.state === 'FAIL').map((s) => ({ stage: s.stage, detail: s.detail })),
+          brief: run.brief, stack: tree.stack, blueprint,
+          treePaths: tree.files.map((f) => ({ path: f.path, role: f.role })),
+          workspaceDir,
+        });
+        if (repair?.attempted) {
+          repairUsed = true;
+          retries += repair.addedAttempts;
+          totalGenMs += repair.addedMs;
+          totalBytes += repair.addedBytes;
+          bootGate = await runBootGate(runUid, workspaceDir, tree.stack, traceId);
+          emit(STUDIO_EVENTS.BOOTGATE_RESULT, bootGate.passed ? 'SUCCESS' : 'CRITICAL',
+            `Studio ${runUid} : re-porte de boot post-réparation (EVO-000028) ${bootGate.passed ? 'PASS' : 'FAIL'} — ${bootGate.stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`, runUid,
+            { repaired: repair.repaired, stillBroken: repair.stillBroken, passed: bootGate.passed, totalMs: bootGate.totalMs });
+          if (!bootGate.passed) {
+            const fail2 = bootGate.stages.find((s) => s.state === 'FAIL');
+            await failRun(runId, runUid, `porte de boot (EVO-000016) — ${fail2?.stage ?? '?'} : ${(fail2?.detail ?? 'échec boot').slice(0, 200)} [réparation EVO-000028 : ${repair.repaired.length} réparé(s), ${repair.stillBroken.length} en échec persistant — re-porte FAIL]`.slice(0, 480));
+            return;
+          }
+          await refreshDeliverableZip(runId, runUid); // ZIP à jour avec les fichiers réparés
+        } else {
+          const fail = bootGate.stages.find((s) => s.state === 'FAIL');
+          await failRun(runId, runUid, `porte de boot (EVO-000016) — ${fail?.stage ?? '?'} : ${(fail?.detail ?? 'échec boot').slice(0, 240)}`);
+          return;
+        }
       }
     }
 
@@ -340,9 +371,34 @@ async function runStudioPipeline(runId: string): Promise<void> {
         `Studio ${runUid} : porte comportementale (EVO-000025) ${behavioralGate.passed ? 'PASS' : 'FAIL'} — ${behavioralGate.stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`, runUid,
         { passed: behavioralGate.passed, totalMs: behavioralGate.totalMs, stages: behavioralGate.stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 220) })) });
       if (!behavioralGate.passed) {
-        const fail = behavioralGate.stages.find((s) => s.state === 'FAIL');
-        await failRun(runId, runUid, `porte comportementale (EVO-000025) — ${fail?.stage ?? '?'} : ${(fail?.detail ?? 'échec pytest').slice(0, 240)}`);
-        return;
+        // EVO-000028 — boucle de réparation ciblée (si le budget 1 cycle/run est resté intact)
+        const repair = repairUsed ? null : await runRepairCycle({
+          runId, runUid, traceId, gateKind: 'BEHAVIORAL',
+          failStages: behavioralGate.stages.filter((s) => s.state === 'FAIL').map((s) => ({ stage: s.stage, detail: s.detail })),
+          brief: run.brief, stack: tree.stack, blueprint,
+          treePaths: tree.files.map((f) => ({ path: f.path, role: f.role })),
+          workspaceDir,
+        });
+        if (repair?.attempted) {
+          repairUsed = true;
+          retries += repair.addedAttempts;
+          totalGenMs += repair.addedMs;
+          totalBytes += repair.addedBytes;
+          behavioralGate = await runBehavioralGate(runUid, workspaceDir, tree.stack, traceId);
+          emit(STUDIO_EVENTS.BEHAVIORALGATE_RESULT, behavioralGate.passed ? 'SUCCESS' : 'CRITICAL',
+            `Studio ${runUid} : re-porte comportementale post-réparation (EVO-000028) ${behavioralGate.passed ? 'PASS' : 'FAIL'} — ${behavioralGate.stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`, runUid,
+            { repaired: repair.repaired, stillBroken: repair.stillBroken, passed: behavioralGate.passed, totalMs: behavioralGate.totalMs });
+          if (!behavioralGate.passed) {
+            const fail2 = behavioralGate.stages.find((s) => s.state === 'FAIL');
+            await failRun(runId, runUid, `porte comportementale (EVO-000025) — ${fail2?.stage ?? '?'} : ${(fail2?.detail ?? 'échec pytest').slice(0, 200)} [réparation EVO-000028 : ${repair.repaired.length} réparé(s), ${repair.stillBroken.length} en échec persistant — re-porte FAIL]`.slice(0, 480));
+            return;
+          }
+          await refreshDeliverableZip(runId, runUid); // ZIP à jour avec les fichiers réparés
+        } else {
+          const fail = behavioralGate.stages.find((s) => s.state === 'FAIL');
+          await failRun(runId, runUid, `porte comportementale (EVO-000025) — ${fail?.stage ?? '?'} : ${(fail?.detail ?? 'échec pytest').slice(0, 240)}`);
+          return;
+        }
       }
     }
 
@@ -367,6 +423,16 @@ async function runStudioPipeline(runId: string): Promise<void> {
 }
 
 // ── SP-6. EMPAQUETAGE ZIP (livraison) ──────────────────────────────
+
+/** Re-empaquette le ZIP depuis la DB (fichiers réparés par la boucle EVO-000028). */
+async function refreshDeliverableZip(runId: string, runUid: string): Promise<void> {
+  const all = await db.generatedFile.findMany({ where: { runId, state: 'VERIFIED' } });
+  const files = all
+    .filter((f): f is typeof f & { content: string } => Boolean(f.content))
+    .map((f) => ({ path: f.path, content: f.content }));
+  const zipPath = await packageRunZip(runUid, files);
+  await db.generationRun.update({ where: { id: runId }, data: { zipPath } });
+}
 
 export async function packageRunZip(runUid: string, files: { path: string; content: string }[]): Promise<string> {
   const zip = new JSZip();
