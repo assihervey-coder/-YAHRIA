@@ -1,7 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════
-// YAHRIA STUDIO — BOUCLE DE RÉPARATION CIBLÉE AU NIVEAU RUN (EVO-000028)
-// YAHRIA-STD-007 · « Les notes chirurgicales des portes nourrissent une
-// régénération bornée » — convertir les quasi-réussites en runs SEALED.
+// YAHRIA STUDIO — BOUCLE DE RÉPARATION CIBLÉE AU NIVEAU RUN (EVO-000028
+// + EVO-000029) — YAHRIA-STD-007 · « Les notes chirurgicales des portes
+// nourrissent une régénération bornée » — convertir les quasi-réussites
+// en runs SEALED.
 //
 // Motivation mesurée (PTA-002 it.7, few-shot EVO-000027 PROMOTED) :
 // première passe fichiers 97,4 % (38/39) mais 0/3 runs SEALED. Les
@@ -40,6 +41,15 @@
 //                     continue vers SEALED ; FAIL → failRun avec
 //                     l'HISTORIQUE COMPLET. Chaque étape scellée en
 //                     preuve (ARTIFACT si réparation réussie, INCIDENT sinon).
+//
+// EVO-000029 (PROMOTED par HUMAN:reviewer — fidélité des entrées + contrats
+// inter-fichiers, causes racines mesurées PTA-002 it.8, preuve EV-ARTIFACT-000212) :
+//   RC1 — la porte de boot capte stderr DÈS LE SPAWN (traceback perdu avant) ;
+//   RC2 — la porte comportementale met le traceback pytest dans son détail ;
+//   RC3 — chaque fichier réparé reçoit le CONTRAT DE SES FRÈRES (co-cibles
+//         + modules internes importés) : sign top-level déjà définies,
+//         à importer TELLES QUELLES — plus jamais « PaymentInitiate »
+//         importé ici mais défini nulle part (dérive RUN-000013/000022).
 // ═══════════════════════════════════════════════════════════════════
 
 import { createHash } from 'crypto';
@@ -243,16 +253,34 @@ export function mapGateNotesToTargets(input: RepairTargetingInput): RepairTarget
       }
     } else if (fail.stage === 'BOOT' && input.gateKind === 'BOOT') {
       // « uvicorn main:app sans réponse HTTP en 30s — <stderr> »
+      // (a) racine — protocole EVO-000028
       const entries = bootEntryCandidates(d, input.treePaths);
-      for (const e of entries.slice(0, 1)) {
-        pushResolved(e, `boot sans réponse HTTP — racine visée : ${d.slice(0, 160)}`);
-        for (const imp of importsFor(e)) {
-          pushResolved(imp, `import racine de ${e} — chemin d'exécution du boot`);
-        }
+      if (entries[0]) {
+        pushResolved(entries[0], `boot sans réponse HTTP — racine visée : ${d.slice(0, 160)}`);
       }
+      // (b) EVO-000029 RC1 — traceback réel (stderr capté dès le spawn) :
+      //     frames « File "…/xxx.py", line N » résolues dans l'arbre,
+      //     ordre d'apparition ; les frames stdlib/uvicorn ne résolvent PAS
+      //     (hors arbre → ignorées, INV-120)
+      for (const m of d.matchAll(/File\s+"([^"]+\.py)",\s*line\s+(\d+)/g)) {
+        const base = m[1].split('/').pop() ?? m[1];
+        push(base, `traceback boot — ${base}:${m[2]} (frame de l'échec)`);
+      }
+      // (c) modules manquants / symboles rompus (contrat inter-fichiers RC3)
       for (const m of d.matchAll(/No module named '([\w.]+)'/g)) {
         const hit = moduleToTreePath(m[1], input.treePaths);
         pushResolved(hit, `ModuleNotFoundError signalé au boot : ${m[1]}`);
+      }
+      for (const m of d.matchAll(/cannot import name\s+'(\w+)'\s+from\s+'([\w.]+)'/g)) {
+        const hit = moduleToTreePath(m[2], input.treePaths);
+        pushResolved(hit, `ImportError — « ${m[1]} » absent de ${m[2]} (contrat inter-fichiers rompu, EVO-000029)`);
+      }
+      // (d) imports racine — chemin d'exécution du boot (priorité basse :
+      //     les cibles précises du traceback passent d'abord dans le budget)
+      if (entries[0]) {
+        for (const imp of importsFor(entries[0])) {
+          pushResolved(imp, `import racine de ${entries[0]} — chemin d'exécution du boot`);
+        }
       }
     } else if (fail.stage === 'DÉCOUVERTE' && input.gateKind === 'BOOT') {
       // « aucun module racine avec instance FastAPI( ou create_app( »
@@ -261,10 +289,13 @@ export function mapGateNotesToTargets(input: RepairTargetingInput): RepairTarget
         pushResolved(hit ?? null, 'aucune instance FastAPI/create_app découverte — racine à corriger');
       }
     } else if (fail.stage === 'PYTEST' && input.gateKind === 'BEHAVIORAL') {
-      // « pytest exit 1 — 2 failed … — FAILED tests/test_api.py::test_x - assert 500 == 201 »
+      // « pytest exit 1 — 2 failed … — test_initiate_payment: E assert 500 == 201 | … ||
+      //   tests/test_api.py:12: AssertionError » (détail fidèle EVO-000029 RC2)
       const testFiles = new Set<string>();
       for (const m of d.matchAll(/(?:FAILED|ERROR)\s+([\w.\-/]+\.py)/g)) testFiles.add(m[1]);
       for (const m of d.matchAll(/([\w.\-/]+\.py)::\w+/g)) testFiles.add(m[1]);
+      // EVO-000029 — localisations « fichier.py:ligne: Erreur » du détail fidèle
+      for (const m of d.matchAll(/([\w.\-/]+\.py):\d+:/g)) testFiles.add(m[1]);
       // priorité : modules du chemin d'exécution (handlers/imports directs), puis le test lui-même
       for (const t of testFiles) {
         const resolved = resolveToTreePath(t, input.treePaths);
@@ -290,7 +321,71 @@ export function mapGateNotesToTargets(input: RepairTargetingInput): RepairTarget
   return targets.slice(0, REPAIR_MAX_FILES);
 }
 
-// ── RR-5. ÉCRITURE WORKSPACE (garde chemin — duplicata volontaire de ─
+// ── RR-6. CONTRATS INTER-FICHIERS (EVO-000029 RC3 — fonctions pures) ─
+
+/** Signatures publiques top-level d'un module Python (le CONTRAT du fichier). */
+const PY_CONTRACT = /^(class\s+\w+|def\s+\w+|async\s+def\s+\w+|[A-Z][A-Z0-9_]{1,63}\s*=)/;
+
+export function extractPythonContracts(content: string, maxLines = 14, maxLineChars = 110): string[] {
+  const out: string[] = [];
+  for (const raw of (content ?? '').split('\n')) {
+    // top-level STRICT : les lignes indentées (corps de classe/fonction) ne
+    // font pas partie du contrat public — les shapes complets restent
+    // accessibles via les dependencySources (test + dependsOn)
+    if (!raw || raw.startsWith(' ') || raw.startsWith('\t')) continue;
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    if (PY_CONTRACT.test(line)) {
+      out.push(line.slice(0, maxLineChars));
+      if (out.length >= maxLines) break;
+    }
+  }
+  return out;
+}
+
+export interface SiblingContract { path: string; lines: string[] }
+
+/**
+ * EVO-000029 (RC3) — contexte frères d'un fichier à réparer. Frères =
+ * co-cibles du cycle + modules internes importés par le contenu courant.
+ * PURE par injection du lecteur (async pour la DB, fake Map en test).
+ */
+export async function buildSiblingContracts(
+  targetPath: string,
+  currentContent: string | null,
+  coTargets: string[],
+  treePaths: string[],
+  readContent: (p: string) => Promise<string | null>,
+  opts: { maxSiblings?: number; maxChars?: number } = {},
+): Promise<SiblingContract[]> {
+  const maxSiblings = opts.maxSiblings ?? 3;
+  const maxChars = opts.maxChars ?? 2400;
+  const order: string[] = [];
+  const seen = new Set<string>([targetPath]);
+  const add = (p: string | null | undefined): void => {
+    if (!p || seen.has(p) || order.includes(p)) return;
+    seen.add(p);
+    order.push(p);
+  };
+  for (const c of coTargets) add(c); // co-cibles d'abord (réparées ENSEMBLE)
+  const internalImports = currentContent ? resolvePythonImports(currentContent, treePaths) : [];
+  for (const imp of internalImports) add(imp);
+  const out: SiblingContract[] = [];
+  let budget = maxChars;
+  for (const p of order) {
+    if (out.length >= maxSiblings || budget <= 200) break;
+    const content = await readContent(p);
+    if (!content) continue; // absent/vide → pas de contrat inventé (INV-210)
+    const lines = extractPythonContracts(content);
+    if (!lines.length) continue; // sans contrat utile → sauté, ne consomme PAS de slot utile
+    const joined = lines.join('\n').slice(0, budget);
+    budget -= joined.length;
+    out.push({ path: p, lines: joined.split('\n') });
+  }
+  return out;
+}
+
+// ── RR-7. ÉCRITURE WORKSPACE (garde chemin — duplicata volontaire de ─
 //     safeJoin pour éviter tout import cyclique avec studio-pipeline) ─
 
 function safeJoinWorkspace(root: string, rel: string): string | null {
@@ -299,7 +394,7 @@ function safeJoinWorkspace(root: string, rel: string): string | null {
   return resolved.startsWith(normalizedRoot + path.sep) ? resolved : null;
 }
 
-// ── RR-6. LE CYCLE DE RÉPARATION ────────────────────────────────────
+// ── RR-8. LE CYCLE DE RÉPARATION ────────────────────────────────────
 
 /**
  * Cycle UNIQUE de réparation ciblée. Appelé par studio-pipeline aux
@@ -385,7 +480,21 @@ export async function runRepairCycle(input: RepairCycleInput): Promise<RepairCyc
 
     // détail de porte pertinent : ce qui mentionne CE fichier, sinon l'ensemble des FAIL
     const own = input.failStages.filter((s) => s.detail.includes(target.path)).map((s) => `${s.stage} : ${s.detail}`);
-    const verdict = (own.length ? own : input.failStages.map((s) => `${s.stage} : ${s.detail}`)).join(' || ').slice(0, 800);
+    // EVO-000029 — verdict 2000 car. : les détails fidèles RC1/RC2 (tracebacks)
+    // sont LA valeur ajoutée — 800 car. les tronquait à nouveau
+    const verdict = (own.length ? own : input.failStages.map((s) => `${s.stage} : ${s.detail}`)).join(' || ').slice(0, 2000);
+
+    // EVO-000029 (RC3) — contrat des frères : co-cibles du cycle + modules
+    // internes importés par le contenu courant, lus À JOUR en DB (une
+    // réparation antérieure du cycle est visible pour les suivantes)
+    const siblings = await buildSiblingContracts(
+      target.path, current,
+      targets.map((t) => t.path), treePathList,
+      async (p) => (await db.generatedFile.findFirst({ where: { runId: input.runId, path: p } }))?.content ?? null,
+    );
+    const siblingPoint = siblings.length
+      ? `SIBLING CONTRACTS (EVO-000029 cross-file repair context) — these sibling files ALREADY define these exact symbols; import and use them EXACTLY as declared, NEVER re-declare, re-name, or invent different shapes:\n${siblings.map((s) => `--- ${s.path} ---\n${s.lines.join('\n')}`).join('\n')}`
+      : null;
 
     const entry: BlueprintEntry = {
       path: target.path,
@@ -394,12 +503,14 @@ export async function runRepairCycle(input: RepairCycleInput): Promise<RepairCyc
       keyPoints: [
         ...(bp?.keyPoints ?? []),
         `REPAIR DIRECTIVE (EVO-000028 bounded repair loop) — the ${input.gateKind} quality gate FAILED with this EXACT verdict: ${verdict}`,
+        'The current content may contain accidental prompt artifacts (leading lines like "--- file.py ---" copied from the prompt); they are NEVER valid source code — your output must start directly with real code.',
         ...(current
           ? [`CURRENT FILE CONTENT (fix it, do not start from scratch):\n${current.slice(0, 3500)}`]
           : []),
         ...(current
           ? ['The file already exists — apply the precise fix for the exact verdict above, keep the valid structure, and output the COMPLETE corrected file.']
           : []),
+        ...(siblingPoint ? [siblingPoint] : []),
       ],
       order: bp?.order ?? row.order ?? 999,
     };

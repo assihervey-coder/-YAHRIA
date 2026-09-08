@@ -519,6 +519,14 @@ export function verifyGeneratedContent(content: string, filePath: string): { ok:
   const c = stripFences(content);
   if (c.trim().length < 25) return { ok: false, note: 'contenu vide ou trop court (<25 chars)' };
   if (c.length > MAX_FILE_BYTES) return { ok: false, note: `contenu trop volumineux (${c.length} > ${MAX_FILE_BYTES} octets)` };
+  // Anti prompt-bleed (mesure it.9, RUN-000027/29) : un fichier qui COMMENCE
+  // par un marqueur de section du prompt (« --- security.py --- ») est
+  // objectivement défectueux — le modèle a imité le format du prompt. Jamais
+  // de source valide à cette forme (détection première ligne non vide).
+  const firstLine = c.split('\n').find((l) => l.trim().length > 0)?.trim() ?? '';
+  if (/^---\s+[^\s-].*\s*---$/.test(firstLine) || /^---\s*\w[\w./-]*\.\w+\s*---$/.test(firstLine)) {
+    return { ok: false, note: `prompt-bleed détecté : la première ligne « ${firstLine.slice(0, 60)} » est un marqueur de section du prompt, jamais du code source — output the raw file content ONLY, no section markers` };
+  }
   for (const { re, label } of PLACEHOLDER_PATTERNS.slice(0, 3)) {
     if (re.test(c)) return { ok: false, note: `placeholder détecté : ${label} (INV-080)` };
   }

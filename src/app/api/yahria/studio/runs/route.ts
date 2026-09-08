@@ -43,12 +43,20 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'arborescence requise (ou activer « l\'IA conçoit l\'arborescence »)' }, { status: 400 });
     }
 
-    // runUid séquentiel RUN-000001 — retry uniquement sur vraie collision unique (P2002)
+    // runUid séquentiel RUN-000001 — basé sur le MAX NUMÉRIQUE existant
+    // (jamais count : l'écart count↔max issu de la reconstruction gouvernée
+    // EV-POLICY-000001 générait des collisions RUN-000020 en cascade, it.9)
+    // + retry sur vraie collision concurrente (P2002)
     type RunRow = Awaited<ReturnType<typeof db.generationRun.create>>;
     let run: RunRow | null = null;
     for (let attempt = 0; attempt < 3 && !run; attempt++) {
-      const count = await db.generationRun.count();
-      const runUid = `RUN-${String(count + 1 + attempt).padStart(6, '0')}`;
+      const uids = await db.generationRun.findMany({ select: { runUid: true } });
+      let max = 0;
+      for (const u of uids) {
+        const n = /^RUN-(\d{6})$/.exec(u.runUid);
+        if (n) max = Math.max(max, parseInt(n[1], 10));
+      }
+      const runUid = `RUN-${String(max + 1 + attempt).padStart(6, '0')}`;
       try {
         run = await db.generationRun.create({
           data: {

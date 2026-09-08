@@ -155,10 +155,16 @@ export async function runBootGate(runUid: string, workspaceDir: string, stack: s
         py.on('close', (code) => resolve(code === 0 ? '' : err.trim() || `py_compile exit ${code}`));
         py.on('error', (e) => resolve(String(e)));
       });
-      const badFiles = [...new Set(syntaxErr.split('\n').filter((l) => l.includes('SyntaxError') || l.includes('never closed') || l.includes('unterminated')).map((l) => l.split(':')[0]))];
+      // EVO-000029 (fidélité) — fichiers cités par les frames « File "x.py", line N »
+      // de py_compile EN PLUS des lignes SyntaxError (la dernière ligne seule ne
+      // contenait pas la localisation — note appauvrie pour la réparation).
+      const badFiles = [...new Set([
+        ...[...syntaxErr.matchAll(/File\s+"([^"]+\.py)"/g)].map((m) => m[1]),
+        ...syntaxErr.split('\n').filter((l) => l.includes('SyntaxError') || l.includes('never closed') || l.includes('unterminated')).map((l) => l.split(':')[0]),
+      ])].filter((f) => f && f.includes('.py'));
       stages.push({
         stage: 'SYNTAXE', state: syntaxErr ? 'FAIL' : 'PASS',
-        detail: syntaxErr ? `${badFiles.length || 1} fichier(s) en erreur de syntaxe : ${badFiles.slice(0, 8).join(', ') || '?'} — ${syntaxErr.split('\n').slice(-1)[0].slice(0, 220)}` : `${pyFiles.length} fichiers compilés sans erreur`,
+        detail: syntaxErr ? `${badFiles.length || 1} fichier(s) en erreur de syntaxe : ${badFiles.slice(0, 8).join(', ') || '?'} — ${syntaxErr.split('\n').filter(Boolean).slice(-4).join(' | ').slice(0, 400)}` : `${pyFiles.length} fichiers compilés sans erreur`,
         ms: Date.now() - t2,
       });
       if (syntaxErr) throw new GateStop();
@@ -193,6 +199,12 @@ export async function runBootGate(runUid: string, workspaceDir: string, stack: s
       // 5. BOOT — uvicorn réel, port libre, fenêtre 30 s
       const port = await freePort();
       const child = spawn('python3', ['-m', 'uvicorn', `${found.module}:${found.instance}`, '--host', '127.0.0.1', '--port', String(port), '--log-level', 'warning'], { cwd: workspaceDir });
+      // EVO-000029 (RC1) — stderr capté DÈS LE SPAWN : les listeners attachés
+      // APRÈS la fenêtre d'attente perdaient le traceback émis PENDANT le boot
+      // (RUN-000013 : ImportError écrit à t+1s, note de porte réduite à
+      // « connexion refusée » — réparation régénérée à l'aveugle).
+      let stderrAll = '';
+      child.stderr?.on('data', (c: Buffer) => { stderrAll += c.toString(); });
       const t3 = Date.now();
       let up = false;
       while (Date.now() - t3 < BOOT_WAIT_MS) {
@@ -203,17 +215,15 @@ export async function runBootGate(runUid: string, workspaceDir: string, stack: s
       const bootMs = Date.now() - t3;
       let stderrTail = '';
       if (!up) {
-        await new Promise<string>((resolve) => {
-          let err = '';
-          child.stderr?.on('data', (c: Buffer) => { err += c.toString(); });
-          child.on('close', () => resolve(err));
-          setTimeout(() => resolve(err), 1_500);
-        }).then((e) => { stderrTail = e; });
+        // 1,5 s de grâce pour drainer les derniers octets, puis terminaison —
+        // stderrTail = TOUT le stderr accumulé depuis le spawn (traceback inclus)
+        await new Promise((r) => setTimeout(r, 1_500));
+        stderrTail = stderrAll;
         terminate(child);
       }
       stages.push({
         stage: 'BOOT', state: up ? 'PASS' : 'FAIL',
-        detail: up ? `uvicorn ${found.module}:${found.instance} répond sur :${port} (boot ${bootMs} ms)` : `uvicorn ${found.module}:${found.instance} sans réponse HTTP en ${BOOT_WAIT_MS / 1000}s — ${stderrTail.slice(-600).trim() || 'connexion refusée'}`,
+        detail: up ? `uvicorn ${found.module}:${found.instance} répond sur :${port} (boot ${bootMs} ms)` : `uvicorn ${found.module}:${found.instance} sans réponse HTTP en ${BOOT_WAIT_MS / 1000}s — ${stderrTail.slice(-1200).trim() || 'connexion refusée'}`,
         ms: bootMs,
       });
       if (!up) throw new GateStop();
@@ -249,7 +259,7 @@ export async function runBootGate(runUid: string, workspaceDir: string, stack: s
   await captureAndPersist({
     category: passed ? 'ARTIFACT' : 'INCIDENT', criticality: 'HIGH', actorType: 'SYSTEM', actorId: 'yahria-boot-gate',
     claim: `Porte de boot (EVO-000016) ${passed ? 'PASS' : 'FAIL'} : ${runUid} — ${stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`,
-    payload: { runUid, stack, passed, totalMs: report.totalMs, openapi: openapiNote, stages: stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 220) })) },
+    payload: { runUid, stack, passed, totalMs: report.totalMs, openapi: openapiNote, stages: stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 600) })) },
     traceId,
   });
   return report;

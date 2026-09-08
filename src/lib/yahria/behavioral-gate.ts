@@ -62,7 +62,47 @@ async function discoverTests(root: string): Promise<string[]> {
   return out.sort();
 }
 
-// ── BG2-4. LA PORTE ─────────────────────────────────────────────────
+// ── BG2-4. DÉTAIL PYTEST DE FIDÉLITÉ (EVO-000029 RC2) ───────────────
+
+/**
+ * EVO-000029 (RC2) — détail pytest de FIDÉLITÉ : les 3 dernières lignes
+ * résumaient (« assert 500 == 201 ») SANS la cause ; on extrait, par test
+ * en échec : le nom (en-têtes de blocs), les lignes E (assertion/exception),
+ * la ligne > du code fautif et la localisation fichier:ligne — la matière
+ * première exacte dont la boucle de réparation a besoin.
+ */
+export function pytestFailureDetail(stdout: string, stderr: string, maxChars = 1600): string {
+  const lines = `${stdout ?? ''}\n${stderr ?? ''}`.split('\n');
+  const blocks: { name: string; lines: string[] }[] = [];
+  let cur: { name: string; lines: string[] } | null = null;
+  for (const l of lines) {
+    const head = /^_{6,}\s*(.+?)\s*_{6,}$/.exec(l.trim());
+    if (head) {
+      cur = { name: head[1].trim(), lines: [] };
+      blocks.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const t = l.trim();
+    if (
+      t.startsWith('E ') || t.startsWith('>') ||
+      /^[\w./\\-]+\.py:\d+/.test(t) ||
+      /^(FAILED|ERROR)\s/.test(t)
+    ) {
+      if (cur.lines.length < 12) cur.lines.push(t.slice(0, 200));
+    }
+  }
+  const parts = blocks
+    .filter((b) => b.lines.length > 0)
+    .map((b) => `${b.name}: ${b.lines.join(' | ')}`);
+  if (!parts.length) {
+    // aucun bloc parsé (crash de collecte ?) — chute honnête sur les dernières lignes
+    return (stderr || stdout).split('\n').filter(Boolean).slice(-6).join(' | ').slice(0, maxChars);
+  }
+  return parts.join(' || ').slice(0, maxChars);
+}
+
+// ── BG2-5. LA PORTE ─────────────────────────────────────────────────
 
 export async function runBehavioralGate(runUid: string, workspaceDir: string, stack: string, traceId?: string): Promise<BehavioralGateReport> {
   const t0 = Date.now();
@@ -111,14 +151,17 @@ export async function runBehavioralGate(runUid: string, workspaceDir: string, st
       const e = /(\d+) error/.exec(summary);
       const nPassed = m ? parseInt(m[1], 10) : 0;
       const nFailed = (f ? parseInt(f[1], 10) : 0) + (e ? parseInt(e[1], 10) : 0);
-      const tail = (stderr || stdout).split('\n').filter(Boolean).slice(-3).join(' | ').slice(0, 400);
+      // EVO-000029 (RC2) — détail fidèle : blocs d'échec pytest nommés,
+      // lignes E, code fautif et localisation fichier:ligne (PAS juste le
+      // résumé des 3 dernières lignes sans traceback)
+      const detail = pytestFailureDetail(stdout, stderr);
       stages.push({
         stage: 'PYTEST', state: code === 0 && !timedOut ? 'PASS' : 'FAIL',
         detail: timedOut
           ? `pytest sans terminer en ${PYTEST_TIMEOUT_MS / 1000}s — suite suspendue (blocage réseau ? attente infinie ?)`
           : code === 0
             ? `pytest exit 0 — ${summary || `${nPassed} passed`}`
-            : `pytest exit ${code ?? '?'} — ${summary || 'aucun résumé décodable'} — ${tail}`,
+            : `pytest exit ${code ?? '?'} — ${summary || 'aucun résumé décodable'} — ${detail}`,
         ms: Date.now() - t2,
       });
       if (code !== 0 || timedOut) throw new GateStop();
@@ -143,7 +186,7 @@ export async function runBehavioralGate(runUid: string, workspaceDir: string, st
   await captureAndPersist({
     category: passed ? 'ARTIFACT' : 'INCIDENT', criticality: 'HIGH', actorType: 'SYSTEM', actorId: 'yahria-behavioral-gate',
     claim: `Porte comportementale (EVO-000025) ${passed ? 'PASS' : 'FAIL'} : ${runUid} — ${stages.map((s) => `${s.stage}:${s.state}`).join(' ')}`,
-    payload: { runUid, stack, passed, totalMs: report.totalMs, stages: stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 220) })) },
+    payload: { runUid, stack, passed, totalMs: report.totalMs, stages: stages.map((s) => ({ stage: s.stage, state: s.state, detail: s.detail.slice(0, 600) })) },
     traceId,
   });
   return report;
