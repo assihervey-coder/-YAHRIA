@@ -44,7 +44,7 @@ const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
     "no-useless-escape": "off",
   },
 }, {
-  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "db/**", "public/docs/**", "docs/**", "YAHRIA_CANONICAL_BLUEPRINT/**"]
+  ignores: ["node_modules/**", ".next/**", "out/**", "build/**", "next-env.d.ts", "examples/**", "skills", "db/**", "public/docs/**", "docs/**", "YAHRIA_CANONICAL_BLUEPRINT/**", "recovery/**", "upload/**", "download/**", ".ollama-dl/**", "scripts/**"]
 }];
 
 export default eslintConfig;
