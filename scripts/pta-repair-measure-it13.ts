@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 // ═══════════════════════════════════════════════════════════════════
-// YAHRIA — MESURE PTA-002 ITÉRATION 12 — CONTRATS DE REGISTRE + FIDÉLITÉ
-// BOOT (EVO-000032 PROMOTED — décision HUMAN:reviewer, INV-227) enrichit la
-// boucle EVO-000028 + fidélité EVO-000029 + budget par porte/pydantic v2
-// EVO-000030 + fermeture des dépendances EVO-000031 + few-shot EVO-000027
+// YAHRIA — MESURE PTA-002 ITÉRATION 13 — CONTRATS CROISÉS INTER-CO-GÉNÉRÉS
+// + SCELLÉ FIDÈLE 2400 + BACKOFF FABRIC (EVO-000033 PROMOTED — décision
+// HUMAN:reviewer, INV-227) enrichit la boucle EVO-000028 + fidélité EVO-000029
+// + budget par porte/pydantic v2 EVO-000030 + fermeture des dépendances
+// EVO-000031 + registres/fidélité-boot EVO-000032 + few-shot EVO-000027
 // (toutes PROMOTED).
 //
 //   bun scripts/pta-repair-measure-it13.ts slot N        — exécute UN slot
@@ -59,6 +60,7 @@ import { isRunRepairActive, isDependencyClosureActive, isRegistryContractsActive
 import { isBootFidelityActive } from '../src/lib/yahria/boot-gate';
 import { isCrossContractsActive, isReverseDependentsActive, isSealedFidelityActive, isFabricBackoffActive } from '../src/lib/yahria/cross-contracts';
 import { isBudgetPerGateActive } from '../src/lib/yahria/repair-budget';
+import { pingProvider } from '../src/lib/yahria/llm-fabric';
 
 const BASE = 'http://127.0.0.1:3000';
 const db = new PrismaClient();
@@ -132,6 +134,18 @@ async function preflight(): Promise<void> {
   if (fabric.order[0] !== 'zai' || !zai?.configured || zai?.breaker !== 'CLOSED') {
     throw new Error(`fabric non saine : order=${JSON.stringify(fabric.order)} zai=${JSON.stringify(zai?.breaker)}`);
   }
+  // Leçon it.13 (EV-ARTIFACT-001134 / seal-task44) : le disjoncteur rapporte
+  // CLOSED après simple expiration du cooldown (90 s) alors que le fournisseur
+  // refuse RÉELLEMENT chaque appel (429 soutenu — fenêtre it.13 3 h 17 : 117
+  // waits FB « refermé » suivis d'échecs immédiats). Le pré-vol fait donc UNE
+  // vraie canarie réseau — sans elle, le harnais brûle des fenêtres entières
+  // sur un fournisseur mort (leçon it.13 : 9 runs INFRA d'affilée).
+  const canary = await pingProvider('zai', 25000);
+  const canaryOk = canary.attempts.some((a) => a.ok);
+  if (!canaryOk) {
+    throw new Error(`canarie fabric ÉCHOUÉE (zai refuse réellement — détails : ${canary.attempts.map((a) => `${a.provider}:${a.ok ? 'ok' : String(a.error ?? 'échec').slice(0, 80)}`).join(' | ')}) — le disjoncteur peut être CLOSED sur un fournisseur 429 — mesure REPORTÉE (leçon it.13) : relancer quand le fournisseur répond`);
+  }
+  log(`canarie fabric : OK (${canary.ms} ms via ${canary.provider ?? 'zai'})`);
   const fewShot = await isGoldenFewShotActive();
   if (!fewShot) throw new Error('few-shot EVO-000027 NON armé — mesure invalide');
   const repair = await isRunRepairActive();
@@ -350,6 +364,14 @@ async function main(): Promise<void> {
     }
 
     const counted = verdicts.filter((v) => v.classification !== 'INFRA-EXCLU');
+    // Leçon it.13 (2ᵉ défaut d'agrégat, classe fidélité mesure BF-EV1/S1) :
+    // 0 slot compté rend AC3/AC4 VRAIS PAR VACUITÉ (0 violation sur 0 run) —
+    // l'agrégat scellé it.13 porte « AC3 PASS, AC4 PASS » sur 0/0 compté.
+    // Un finalize SANS AUCUN slot comptable est refusé : l'itération est
+    // consignée INFRA (dossier fabric) mais JAMAIS agrégée en AC.
+    if (counted.length === 0) {
+      throw new Error('finalize refusé — 0 slot comptable (tous INFRA-EXCLU) : agrégat AC vide de sens (AC3/AC4 vrais par vacuité — leçon it.13). Consigner le dossier fabric + re-mesurer plus tard — aucun agrégat ne sera scellé');
+    }
     const sealedCycle0 = counted.filter((v) => v.classification === 'SUCCÈS-CYCLE0').length;
     const sealedCycle1 = counted.filter((v) => v.classification === 'SUCCÈS-CYCLE≤1').length;
     const sealedCycle2 = counted.filter((v) => v.classification === 'SUCCÈS-CYCLE≤2').length;
@@ -404,7 +426,7 @@ async function main(): Promise<void> {
 
     await captureAndPersist({
       category: 'ARTIFACT', criticality: 'HIGH', actorType: 'AGENT', actorId: 'pta-repair-measure-it13',
-      claim: `PTA-002 itération 12 (contrats croisés + scellé fidèle + backoff fabric EVO-000033, contrats de registre + fidélité boot EVO-000032, fermeture des dépendances EVO-000031, budget de réparation PAR PORTE ≤2 cycles/run + contrat pydantic v2 EVO-000030, boucle EVO-000028, fidélité EVO-000029, few-shot EVO-000027 actifs) : ${sealedTotal}/${counted.length} runs SEALED (cycle 0 : ${sealedCycle0}, cycle ≤1 : ${sealedCycle1}, cycle ≤2 : ${sealedCycle2}), ${repairsEngaged} run(s) avec boucle engagée, taux première passe ${(aggregateRate * 100).toFixed(1)} % sous triple porte — AC1 ${ac1 ? 'PASS' : 'FAIL'}, AC2 ${ac2 ? 'PASS' : 'FAIL'}, AC3 ${ac3 ? 'PASS' : 'FAIL'}, AC4 ${ac4 ? 'PASS' : 'FAIL'} (baselines it.7 : 0/3, 97,4 % · it.8 : 0/3, 53,8 % · it.9 : 0/3, 84,6 % · it.10 : 0/3, 20,5 % dégradée · it.11 : 0/3, 25,6 % dégradée · it.12 : 0/2, 0 % dégradée (slot 3 INFRA-EXCLU))`,
+      claim: `PTA-002 itération 13 (contrats croisés + scellé fidèle + backoff fabric EVO-000033, contrats de registre + fidélité boot EVO-000032, fermeture des dépendances EVO-000031, budget de réparation PAR PORTE ≤2 cycles/run + contrat pydantic v2 EVO-000030, boucle EVO-000028, fidélité EVO-000029, few-shot EVO-000027 actifs) : ${sealedTotal}/${counted.length} runs SEALED (cycle 0 : ${sealedCycle0}, cycle ≤1 : ${sealedCycle1}, cycle ≤2 : ${sealedCycle2}), ${repairsEngaged} run(s) avec boucle engagée, taux première passe ${(aggregateRate * 100).toFixed(1)} % sous triple porte — AC1 ${ac1 ? 'PASS' : 'FAIL'}, AC2 ${ac2 ? 'PASS' : 'FAIL'}, AC3 ${ac3 ? 'PASS' : 'FAIL'}, AC4 ${ac4 ? 'PASS' : 'FAIL'} (baselines it.7 : 0/3, 97,4 % · it.8 : 0/3, 53,8 % · it.9 : 0/3, 84,6 % · it.10 : 0/3, 20,5 % dégradée · it.11 : 0/3, 25,6 % dégradée · it.12 : 0/2, 0 % dégradée (slot 3 INFRA-EXCLU))`,
       payload: {
         registryContracts: 'EVO-000032 PROMOTED (HUMAN:reviewer) — clés dict top-level visibles (≤8 lignes/110 car.)',
         crossContracts: 'EVO-000033 PROMOTED (HUMAN:reviewer) — registre de génération incrémental (routes+retours+registres ≤3600) + arêtes dependsOn dérivées (ordre topologique) + dépendants inverses et assertions de test en réparation + scellé de porte 2400 tête+queue + backoff fabric ≤90s (INV-210 intact)',
